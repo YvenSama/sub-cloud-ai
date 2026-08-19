@@ -47,7 +47,7 @@ const formatFilename = (str) => {
 const axiosConfig = { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } };
 
 // ==========================================
-// 2. GIAO DIỆN HTML TỔNG (WIDGET ĐỒNG BỘ SERVER)
+// 2. GIAO DIỆN HTML TỔNG
 // ==========================================
 const renderHTML = (content, username = null, role = 'guest') => `
     <html>
@@ -729,7 +729,7 @@ app.post('/upload-translate', upload.single('subFile'), async (req, res) => {
 });
 
 // ==========================================
-// 6. TIẾN ĐỘ NỀN & QUEUE SYSTEM (FIX LỖI CẤU TRÚC JSON)
+// 6. TIẾN ĐỘ NỀN & QUEUE SYSTEM (BẢN V8.1 - ĐIỂM VÀNG)
 // ==========================================
 app.get('/api/trigger-translate', async (req, res) => {
     const username = getLoggedInUser(req);
@@ -834,7 +834,6 @@ async function runSmartTranslation(taskId, type, id, movieName, username, uData,
             subContent = subResponse.data;
         }
 
-        // CHUẨN HÓA VÀ FIX LỖI TÁCH DÒNG CỦA FILE SRT
         let normalizedContent = subContent.replace(/\r\n/g, '\n');
         const blocks = normalizedContent.trim().split(/\n{2,}/);
         const parsedBlocks = [], originalTexts = [];
@@ -851,7 +850,8 @@ async function runSmartTranslation(taskId, type, id, movieName, username, uData,
             else parsedBlocks.push({ isMeta: true, raw: block });
         });
 
-        const chunkSize = 40; 
+        // ĐIỂM VÀNG: CHUNK = 75
+        const chunkSize = 75; 
         const translatedTexts = [];
         const mode = uData.translationMode || 'auto';
         
@@ -888,20 +888,21 @@ async function runSmartTranslation(taskId, type, id, movieName, username, uData,
                     retries++;
                     if (retries >= 3) { translatedTexts.push(...chunk); } 
                     else {
-                        const waitTime = currentProvider === 'groq' ? 3000 : 20000; 
-                        updateTask(`API quá tải. Đợi ${waitTime/1000}s thử lại...`, curProgress);
+                        // ĐIỂM VÀNG: KHI BỊ LỖI QUÁ TẢI MỚI CHỜ 
+                        const waitTime = currentProvider === 'groq' ? 3000 : 15000; 
+                        updateTask(`API bận. Đợi ${waitTime/1000}s thử lại...`, curProgress);
                         await new Promise(r => setTimeout(r, waitTime));
                     }
                 }
             }
-            if (currentProvider === 'gemini') await new Promise(r => setTimeout(r, 6000)); 
-            else await new Promise(r => setTimeout(r, 1000)); 
+            // ĐIỂM VÀNG: GIẢM THỜI GIAN NGHỈ CỐ ĐỊNH XUỐNG MỨC CỰC THẤP
+            if (currentProvider === 'gemini') await new Promise(r => setTimeout(r, 2000)); 
+            else await new Promise(r => setTimeout(r, 500)); 
         }
 
         if (activeTasks[taskId].isCancelled) return;
         updateTask('Đang lưu lên Firebase...', 95);
         
-        // CHUẨN HÓA CẤU TRÚC VTT ĐẦU RA
         let finalVttContent = "WEBVTT\n\n"; 
         let textIndex = 0;
         parsedBlocks.forEach(block => {
@@ -921,4 +922,4 @@ async function runSmartTranslation(taskId, type, id, movieName, username, uData,
     } catch (err) { if (!activeTasks[taskId].isCancelled) updateTask(`❌ Lỗi: ${err.message}`, 0); }
 }
 
-app.listen(PORT, () => { console.log(`🚀 KHO PHỤ ĐỀ AI (V8.0 BẢN CHUẨN JSON VÀ VTT FORMAT) CHẠY TẠI CỔNG 7000`); });
+app.listen(PORT, () => { console.log(`🚀 KHO PHỤ ĐỀ AI (V8.1 BẢN TỐI ƯU TỐC ĐỘ VÀNG) CHẠY TẠI CỔNG 7000`); });
