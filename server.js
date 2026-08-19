@@ -116,7 +116,7 @@ const renderHTML = (content, username = null, role = 'guest') => `
     <body>
         <div class="container">
             <h2 style="text-align: center; color: #007bff; margin-bottom: 0;">☁️ KHO PHỤ ĐỀ AI ĐÁM MÂY</h2>
-            <p style="text-align: center; font-size: 13px; margin-top: 5px;">Hệ thống Dịch & Quản lý Phụ đề Thông minh</p>
+            <p style="text-align: center; font-size: 13px; margin-top: 5px;">Hệ thống Dịch Độc Lập (Groq / Gemini)</p>
             
             <div class="user-bar">
                 <span>👋 Xin chào, <b>${username ? username : 'Khách vãng lai'}</b> ${role === 'admin' ? '(👑 Admin)' : (role === 'user' ? '(👤 User)' : '')}</span>
@@ -176,7 +176,8 @@ app.post('/api/register', async (req, res) => {
     if (userSnap.exists()) return res.send("Tài khoản đã tồn tại! <a href='/auth'>Quay lại</a>");
     
     const usersSnapshot = await getDocs(collection(db, "users"));
-    await setDoc(userRef, { passwordHash: hashPwd(password), role: usersSnapshot.empty ? 'admin' : 'user', geminiKey: '', geminiModel: 'gemini-2.5-flash', createdAt: new Date().toISOString() });
+    // THÊM GROQ KEY & MODE VÀO MẶC ĐỊNH
+    await setDoc(userRef, { passwordHash: hashPwd(password), role: usersSnapshot.empty ? 'admin' : 'user', geminiKey: '', groqKey: '', geminiModel: 'gemini-2.5-flash', translationMode: 'gemini', createdAt: new Date().toISOString() });
     res.cookie('username', username, { maxAge: 30 * 24 * 60 * 60 * 1000 });
     res.redirect('/dashboard');
 });
@@ -200,14 +201,17 @@ app.get('/', (req, res) => res.redirect('/dashboard'));
 
 app.get('/dashboard', async (req, res) => {
     const username = getLoggedInUser(req);
-    let role = 'guest', geminiKey = '', currentModel = 'gemini-2.5-flash';
+    let role = 'guest', geminiKey = '', groqKey = '', currentModel = 'gemini-2.5-flash', translationMode = 'gemini';
     
     if (username) {
         const userSnap = await getDoc(doc(db, "users", username));
         if (userSnap.exists()) {
-            role = userSnap.data().role;
-            geminiKey = userSnap.data().geminiKey || '';
-            currentModel = userSnap.data().geminiModel || 'gemini-2.5-flash';
+            const data = userSnap.data();
+            role = data.role;
+            geminiKey = data.geminiKey || '';
+            groqKey = data.groqKey || '';
+            currentModel = data.geminiModel || 'gemini-2.5-flash';
+            translationMode = data.translationMode || 'gemini';
         }
     }
 
@@ -321,15 +325,26 @@ app.get('/dashboard', async (req, res) => {
         </div>
 
         <div id="tab-api" class="tab-pane">
-            <div class="card">
-                <h3 style="margin-top: 0;">🔑 CẤU HÌNH API AI</h3>
+            <div class="card" style="border-top: 4px solid #17a2b8;">
+                <h3 style="margin-top: 0; color: #17a2b8;">🔑 CẤU HÌNH API AI (ĐỘC LẬP)</h3>
                 <form action="/save-key" method="POST">
-                    <select name="geminiModel">
-                        <option value="gemini-2.5-flash" ${currentModel === 'gemini-2.5-flash' ? 'selected' : ''}>Gemini 2.5 Flash</option>
-                        <option value="gemini-1.5-flash" ${currentModel === 'gemini-1.5-flash' ? 'selected' : ''}>Gemini 1.5 Flash</option>
+                    <label style="font-weight: bold; font-size: 14px;">1. Chọn Bộ Máy Dịch:</label>
+                    <select name="translationMode" style="margin-bottom: 15px;">
+                        <option value="gemini" ${translationMode === 'gemini' ? 'selected' : ''}>🧠 Google Gemini (Ổn định)</option>
+                        <option value="groq" ${translationMode === 'groq' ? 'selected' : ''}>🚀 Groq Llama (Tốc độ)</option>
                     </select>
-                    <input type="text" name="geminiKey" value="${geminiKey}" placeholder="Dán API Key (AIza...)" required>
-                    <button type="submit" class="main-btn">💾 Lưu Cấu Hình</button>
+
+                    <label style="font-weight: bold; font-size: 14px;">2. API Key (Groq):</label>
+                    <input type="text" name="groqKey" value="${groqKey}" placeholder="Nhập Key Groq (gsk_...)" style="margin-bottom: 15px;">
+
+                    <label style="font-weight: bold; font-size: 14px;">3. API Key (Google Gemini):</label>
+                    <input type="text" name="geminiKey" value="${geminiKey}" placeholder="Nhập Key Gemini (AIza...)" style="margin-bottom: 15px;">
+
+                    <label style="font-weight: bold; font-size: 14px;">Phiên bản Gemini Model:</label>
+                    <select name="geminiModel">
+                        <option value="gemini-2.5-flash" selected>Gemini 2.5 Flash</option>
+                    </select>
+                    <button type="submit" class="main-btn" style="background: #17a2b8; margin-top: 15px;">💾 Lưu Cấu Hình</button>
                 </form>
             </div>
         </div>
@@ -351,7 +366,8 @@ app.get('/dashboard', async (req, res) => {
 // ==========================================
 app.post('/save-key', async (req, res) => {
     const username = getLoggedInUser(req);
-    if (username) await setDoc(doc(db, "users", username), { geminiKey: req.body.geminiKey, geminiModel: req.body.geminiModel }, { merge: true });
+    // LƯU CẢ 2 KEY VÀ CHẾ ĐỘ DỊCH
+    if (username) await setDoc(doc(db, "users", username), { geminiKey: req.body.geminiKey, groqKey: req.body.groqKey, geminiModel: req.body.geminiModel, translationMode: req.body.translationMode }, { merge: true });
     res.redirect('/dashboard');
 });
 
@@ -439,17 +455,21 @@ app.post('/upload-translate', upload.single('subFile'), async (req, res) => {
     fs.readFile(req.file.path, 'utf8', async (err, data) => {
         fs.unlinkSync(req.file.path);
         const userSnap = await getDoc(doc(db, "users", username));
-        if (!userSnap.data().geminiKey) return res.send("Lỗi: Chưa cài API Key.");
+        const uData = userSnap.data();
+
+        // Check điều kiện theo Mode
+        if (uData.translationMode === 'groq' && !uData.groqKey) return res.send("Lỗi: Bạn đã chọn Groq nhưng chưa nhập API Key Groq.");
+        if ((uData.translationMode === 'gemini' || !uData.translationMode) && !uData.geminiKey) return res.send("Lỗi: Bạn đã chọn Gemini nhưng chưa nhập API Key Gemini.");
         
         const taskId = `upload-${Date.now()}`;
         activeTasks[taskId] = { status: 'Đang nạp file...', progress: 0, movieName: req.body.movieName, movieId: taskId, isCancelled: false };
-        runGeminiTranslation(taskId, 'manual', taskId, req.body.movieName, username, userSnap.data().geminiKey, userSnap.data().geminiModel, data);
+        runTranslation(taskId, 'manual', taskId, req.body.movieName, username, uData, data);
         res.redirect(`/status-page?taskId=${taskId}`);
     });
 });
 
 // ==========================================
-// 6. TIẾN ĐỘ NỀN & GEMINI API CALL
+// 6. TIẾN ĐỘ NỀN & API CALL
 // ==========================================
 app.get('/api/cancel-task', (req, res) => {
     if (activeTasks[req.query.taskId]) activeTasks[req.query.taskId].isCancelled = true;
@@ -460,11 +480,16 @@ app.get('/trigger-translate', async (req, res) => {
     const username = getLoggedInUser(req);
     const { type, id, name } = req.query;
     const userSnap = await getDoc(doc(db, "users", username));
-    if (!userSnap.data().geminiKey) return res.send("Lỗi: Chưa cài API Key.");
+    const uData = userSnap.data();
+
+    // Check điều kiện theo Mode
+    const mode = uData.translationMode || 'gemini';
+    if (mode === 'groq' && !uData.groqKey) return res.send("Lỗi: Bạn đã chọn Groq nhưng chưa nhập API Key Groq.");
+    if (mode === 'gemini' && !uData.geminiKey) return res.send("Lỗi: Bạn đã chọn Gemini nhưng chưa nhập API Key Gemini.");
     
     const taskId = `${id}-${Date.now()}`;
     activeTasks[taskId] = { status: 'Đang chuẩn bị...', progress: 0, movieName: name, movieId: id, isCancelled: false };
-    runGeminiTranslation(taskId, type, id, name, username, userSnap.data().geminiKey, userSnap.data().geminiModel);
+    runTranslation(taskId, type, id, name, username, uData);
     res.redirect(`/status-page?taskId=${taskId}`);
 });
 
@@ -513,7 +538,7 @@ app.get('/status-page', (req, res) => {
 
 app.get('/api/task-status', (req, res) => res.json(activeTasks[req.query.taskId] || { status: 'Lỗi', progress: 0 }));
 
-async function runGeminiTranslation(taskId, type, id, movieName, username, apiKey, modelName, rawSubData = null) {
+async function runTranslation(taskId, type, id, movieName, username, uData, rawSubData = null) {
     const updateTask = (status, progress) => { if (activeTasks[taskId] && !activeTasks[taskId].isCancelled) { activeTasks[taskId].status = status; activeTasks[taskId].progress = progress; } };
     try {
         let subContent = "";
@@ -536,6 +561,8 @@ async function runGeminiTranslation(taskId, type, id, movieName, username, apiKe
         });
 
         const chunkSize = 100, translatedTexts = [];
+        const mode = uData.translationMode || 'gemini';
+
         for (let i = 0; i < originalTexts.length; i += chunkSize) {
             if (activeTasks[taskId].isCancelled) return; 
             const chunk = originalTexts.slice(i, i + chunkSize);
@@ -545,23 +572,51 @@ async function runGeminiTranslation(taskId, type, id, movieName, username, apiKe
             while (!success && retries < 3) {
                 if (activeTasks[taskId].isCancelled) return;
                 try {
-                    const aiResponse = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`, { contents: [{ parts: [{ text: `Dịch mảng JSON sau sang tiếng Việt đời thường. TRẢ VỀ ĐÚNG CẤU TRÚC JSON.\n${JSON.stringify(chunkObj)}` }] }] });
-                    let transRes = aiResponse.data.candidates[0].content.parts[0].text.replace(/```json/g, '').replace(/```/g, '').trim();
-                    const parsedData = JSON.parse(transRes.match(/\{[\s\S]*\}/)[0]);
+                    let parsedData;
+                    if (mode === 'groq') {
+                        // Gọi Groq API
+                        const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+                            model: "llama-3.3-70b-versatile",
+                            messages: [
+                                { role: "system", content: "Bạn là biên dịch viên phim chuyên nghiệp. Dịch mảng JSON sang tiếng Việt. CHỈ TRẢ VỀ JSON HỢP LỆ." },
+                                { role: "user", content: `Dữ liệu:\n${JSON.stringify(chunkObj)}` }
+                            ]
+                        }, { headers: { 'Authorization': `Bearer ${uData.groqKey}`, 'Content-Type': 'application/json' }});
+                        
+                        let text = response.data.choices[0].message.content.replace(/```json/g, '').replace(/```/g, '').trim();
+                        const arrayMatch = text.match(/\{[\s\S]*\}/);
+                        parsedData = JSON.parse(arrayMatch ? arrayMatch[0] : text);
+                    } else {
+                        // Gọi Gemini API (Mặc định)
+                        const aiResponse = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${uData.geminiKey}`, { 
+                            contents: [{ parts: [{ text: `Dịch mảng JSON sau sang tiếng Việt đời thường. TRẢ VỀ ĐÚNG CẤU TRÚC JSON.\n${JSON.stringify(chunkObj)}` }] }] 
+                        });
+                        
+                        let transRes = aiResponse.data.candidates[0].content.parts[0].text.replace(/```json/g, '').replace(/```/g, '').trim();
+                        const arrayMatch = transRes.match(/\{[\s\S]*\}/);
+                        parsedData = JSON.parse(arrayMatch ? arrayMatch[0] : transRes);
+                    }
+
                     for (let j = 0; j < chunk.length; j++) translatedTexts.push(parsedData[j] || chunk[j]);
                     success = true;
                 } catch (err) {
                     retries++;
                     if (retries >= 3) translatedTexts.push(...chunk);
                     else {
-                        const waitTime = (parseFloat((err.message || '').match(/retry in (\d+(\.\d+)?)s/)?.[1] || 23) + 2) * 1000; 
+                        let waitTime = mode === 'groq' ? 5000 : 25000;
+                        const match = (err.message || '').match(/retry in (\d+(\.\d+)?)s/); 
+                        if (match) waitTime = (parseFloat(match[1]) + 2) * 1000;
+                        
                         updateTask(`API quá tải. Đợi ${Math.ceil(waitTime/1000)}s...`, Math.floor(10 + (i / originalTexts.length) * 80));
                         await new Promise(r => setTimeout(r, waitTime));
                     }
                 }
             }
             updateTask(`Đang xử lý ${Math.min(i + chunkSize, originalTexts.length)}/${originalTexts.length}...`, Math.floor(10 + (i / originalTexts.length) * 80));
-            await new Promise(r => setTimeout(r, 6000)); 
+            
+            // Xử lý thời gian nghỉ độc lập
+            if (mode === 'gemini') await new Promise(r => setTimeout(r, 6000)); 
+            else await new Promise(r => setTimeout(r, 1000));
         }
 
         if (activeTasks[taskId].isCancelled) return;
@@ -577,4 +632,4 @@ async function runGeminiTranslation(taskId, type, id, movieName, username, apiKe
     } catch (err) { if (!activeTasks[taskId].isCancelled) updateTask(`❌ Lỗi: ${err.message}`, 0); }
 }
 
-app.listen(PORT, () => { console.log(`🚀 KHO PHỤ ĐỀ AI (V2.1 SaaS) CHẠY TẠI CỔNG 7000`); });
+app.listen(PORT, () => { console.log(`🚀 KHO PHỤ ĐỀ AI (BẢN V2.1 NÂNG CẤP GROQ ĐỘC LẬP) CHẠY TẠI CỔNG 7000`); });
