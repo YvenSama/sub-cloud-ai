@@ -42,7 +42,7 @@ const removeVietnameseTones = (str) => {
 const axiosConfig = { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } };
 
 // ==========================================
-// 2. GIAO DIỆN HTML TỔNG
+// 2. GIAO DIỆN HTML TỔNG (Có Herta Kuru Kuru)
 // ==========================================
 const renderHTML = (content, username = null, role = 'guest') => `
     <html>
@@ -52,8 +52,8 @@ const renderHTML = (content, username = null, role = 'guest') => `
         <style>
             :root { --bg: #f4f6f9; --text: #333; --box-bg: white; --border: #dee2e6; --input-bg: white; }
             body.dark { --bg: #121212; --text: #e0e0e0; --box-bg: #1e1e1e; --border: #333; --input-bg: #2d2d2d; }
-            body { font-family: 'Segoe UI', Tahoma, Geneva, sans-serif; padding: 20px; background: var(--bg); color: var(--text); transition: 0.3s; }
-            .container { max-width: 900px; margin: auto; background: var(--box-bg); padding: 30px; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.08); }
+            body { font-family: 'Segoe UI', Tahoma, Geneva, sans-serif; padding: 20px; background: var(--bg); color: var(--text); transition: 0.3s; padding-bottom: 80px; }
+            .container { max-width: 900px; margin: auto; background: var(--box-bg); padding: 30px; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.08); position: relative; }
             input[type="text"], input[type="password"], input[type="number"], select, button { width: 100%; padding: 12px; margin-top: 8px; margin-bottom: 15px; border: 1px solid var(--border); border-radius: 6px; background: var(--input-bg); color: var(--text); }
             .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
             @media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
@@ -62,6 +62,7 @@ const renderHTML = (content, username = null, role = 'guest') => `
             .btn-dl { background: #28a745; color: white; border: none; padding: 6px 12px; border-radius: 5px; text-decoration: none; font-size: 13px; font-weight: bold; margin-right:5px; cursor: pointer;}
             .btn-preview { background: #17a2b8; color: white; border: none; padding: 6px 12px; border-radius: 5px; text-decoration: none; font-size: 13px; font-weight: bold; margin-right:5px; cursor: pointer;}
             .btn-del { background: #dc3545; color: white; border: none; padding: 6px 12px; border-radius: 5px; text-decoration: none; font-size: 13px; font-weight: bold; cursor: pointer;}
+            .btn-edit { background: #ffc107; color: #000; border: none; padding: 6px 12px; border-radius: 5px; text-decoration: none; font-size: 13px; font-weight: bold; cursor: pointer; margin-right:5px;}
             .user-bar { display: flex; justify-content: space-between; align-items: center; background: #2c3e50; color: white; padding: 12px 20px; border-radius: 8px; margin-bottom: 20px; }
             .user-bar a { color: #f1c40f; text-decoration: none; font-weight: bold; margin-left: 15px; }
             .tab-nav { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid var(--border); padding-bottom: 10px; overflow-x: auto;}
@@ -72,13 +73,13 @@ const renderHTML = (content, username = null, role = 'guest') => `
             @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
             .card { background: var(--bg); padding: 20px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 20px; }
             
-            /* CSS Gộp nhóm phim & Poster */
-            .sub-group { margin-bottom: 15px; background: var(--box-bg); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
-            .sub-group-title { background: rgba(0, 123, 255, 0.1); padding: 10px 15px; margin: 0; font-size: 16px; color: #007bff; border-bottom: 1px solid var(--border); }
-            .db-list { list-style: none; padding: 0; margin: 0; }
-            .db-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 15px; border-bottom: 1px solid var(--border); transition: 0.2s; }
+            /* Giao diện Gộp Nhóm (Accordion) */
+            .sub-group { margin-bottom: 10px; background: var(--box-bg); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+            .sub-group-title { background: rgba(0, 123, 255, 0.1); padding: 15px; margin: 0; font-size: 16px; color: #007bff; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: 0.2s;}
+            .sub-group-title:hover { background: rgba(0, 123, 255, 0.2); }
+            .db-list { list-style: none; padding: 0; margin: 0; display: none; border-top: 1px solid var(--border); }
+            .db-item { display: flex; justify-content: space-between; align-items: center; padding: 15px; border-bottom: 1px solid var(--border); }
             .db-item:last-child { border-bottom: none; }
-            .db-item:hover { background: var(--bg); }
             .db-item img { width: 45px; height: 65px; object-fit: cover; border-radius: 4px; margin-right: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
             
             .leaderboard-item { display: flex; justify-content: space-between; padding: 10px; background: var(--input-bg); margin-bottom: 5px; border-radius: 5px; border: 1px solid var(--border);}
@@ -86,12 +87,20 @@ const renderHTML = (content, username = null, role = 'guest') => `
             th, td { border: 1px solid var(--border); padding: 10px; text-align: left; }
             th { background: rgba(0,0,0,0.05); }
 
-            /* CSS Modal */
+            /* Modal Xem Trước */
             .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); backdrop-filter: blur(3px); }
             .modal-content { background: var(--box-bg); margin: 5% auto; padding: 20px; border: 1px solid var(--border); width: 80%; max-width: 700px; border-radius: 10px; max-height: 80vh; display: flex; flex-direction: column; }
             .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
             .close-btn { background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-weight: bold; }
             pre#subPreviewText { background: var(--bg); color: var(--text); padding: 15px; border-radius: 5px; overflow-y: auto; flex-grow: 1; font-family: monospace; font-size: 14px; white-space: pre-wrap; word-wrap: break-word; }
+
+            /* Toggle Switch */
+            .toggle-switch { display: inline-flex; align-items: center; cursor: pointer; margin-bottom: 15px; }
+            .toggle-switch input { display: none; }
+            .toggle-slider { width: 40px; height: 20px; background-color: #ccc; border-radius: 20px; position: relative; transition: 0.3s; margin-right: 10px; }
+            .toggle-slider:before { content: ""; position: absolute; width: 16px; height: 16px; border-radius: 50%; background-color: white; top: 2px; left: 2px; transition: 0.3s; }
+            .toggle-switch input:checked + .toggle-slider { background-color: #007bff; }
+            .toggle-switch input:checked + .toggle-slider:before { transform: translateX(20px); }
         </style>
         <script>
             function openTab(id, btn) {
@@ -100,9 +109,24 @@ const renderHTML = (content, username = null, role = 'guest') => `
                 document.getElementById(id).classList.add('active');
                 if(btn) btn.classList.add('active');
             }
+
+            // Hàm mở/đóng thư mục phim
+            function toggleGroup(groupId) {
+                const list = document.getElementById('group-' + groupId);
+                const icon = document.getElementById('icon-' + groupId);
+                if(list.style.display === 'none' || list.style.display === '') {
+                    list.style.display = 'block';
+                    icon.innerText = '▲';
+                } else {
+                    list.style.display = 'none';
+                    icon.innerText = '▼';
+                }
+            }
+
             function handleTypeChange(sel, targetId) {
                 document.getElementById(targetId).style.display = sel.value === 'series' ? 'grid' : 'none';
             }
+
             async function previewSub(id, movieName) {
                 document.getElementById('modalTitle').innerText = "📄 Xem trước: " + movieName;
                 document.getElementById('subPreviewText').innerText = "⏳ Đang tải nội dung phụ đề...";
@@ -114,6 +138,38 @@ const renderHTML = (content, username = null, role = 'guest') => `
             }
             function closeModal() { document.getElementById('subModal').style.display = "none"; }
             window.onclick = function(e) { if (e.target == document.getElementById('subModal')) closeModal(); }
+
+            // Quản lý Admin: Khóa và Xóa
+            function actionUser(userId, action) {
+                if(action === 'delete') {
+                    if(confirm('Cảnh báo: Bạn có chắc chắn muốn xóa vĩnh viễn user này không?')) {
+                        window.location.href = '/admin/delete-user/' + userId;
+                    }
+                } else if (action === 'lock') {
+                    const days = prompt('Nhập số ngày muốn khóa tài khoản này (Nhập 0 để mở khóa):', '7');
+                    if (days !== null) {
+                        window.location.href = '/admin/lock-user/' + userId + '?days=' + days;
+                    }
+                }
+            }
+
+            function toggleManualInput() {
+                const isManual = document.getElementById('manualMode').checked;
+                document.getElementById('autoSearchGroup').style.display = isManual ? 'none' : 'block';
+                document.getElementById('manualSearchGroup').style.display = isManual ? 'block' : 'none';
+            }
+
+            window.onload = () => { 
+                if(localStorage.getItem('darkMode') === 'true') document.body.classList.add('dark'); 
+                
+                // Mở lại Tab Tìm Kiếm nếu vừa tìm xong
+                const urlParams = new URLSearchParams(window.location.search);
+                if(urlParams.get('tab') === 'search') {
+                    // Cố gắng bấm vào nút tab Tìm kiếm
+                    const searchBtn = Array.from(document.querySelectorAll('.tab-btn')).find(el => el.innerText.includes('Tìm'));
+                    if(searchBtn) openTab('tab-search', searchBtn);
+                }
+            }
         </script>
     </head>
     <body>
@@ -129,6 +185,10 @@ const renderHTML = (content, username = null, role = 'guest') => `
             </div>
             ${content}
         </div>
+
+        <!-- Herta Kuru Kuru GIF -->
+        <img src="https://media.tenor.com/FwO53Zl9Cq0AAAAi/herta-kuru-kuru-kururin.gif" 
+             style="position: fixed; bottom: 10px; right: 10px; width: 120px; z-index: 9999; pointer-events: none;">
 
         <!-- MODAL XEM TRƯỚC -->
         <div id="subModal" class="modal">
@@ -178,7 +238,14 @@ app.post('/api/register', async (req, res) => {
     if (userSnap.exists()) return res.send("Tài khoản đã tồn tại! <a href='/auth'>Quay lại</a>");
     
     const usersSnapshot = await getDocs(collection(db, "users"));
-    await setDoc(userRef, { passwordHash: hashPwd(password), role: usersSnapshot.empty ? 'admin' : 'user', geminiKey: '', geminiModel: 'gemini-2.5-flash', createdAt: new Date().toISOString() });
+    await setDoc(userRef, { 
+        passwordHash: hashPwd(password), 
+        role: usersSnapshot.empty ? 'admin' : 'user', 
+        geminiKey: '', 
+        geminiModel: 'gemini-2.5-flash', 
+        createdAt: new Date().toISOString(),
+        bannedUntil: null 
+    });
     res.cookie('username', username, { maxAge: 30 * 24 * 60 * 60 * 1000 });
     res.redirect('/dashboard');
 });
@@ -186,9 +253,18 @@ app.post('/api/register', async (req, res) => {
 app.post('/api/login', async (req, res) => {
     const { username, password } = req.body;
     const userSnap = await getDoc(doc(db, "users", username));
+    
     if (!userSnap.exists() || userSnap.data().passwordHash !== hashPwd(password)) {
         return res.send("Sai thông tin! <a href='/auth'>Quay lại</a>");
     }
+
+    const userData = userSnap.data();
+    // Kiểm tra tài khoản có bị khóa không
+    if (userData.bannedUntil && new Date(userData.bannedUntil) > new Date()) {
+        const lockTime = new Date(userData.bannedUntil).toLocaleString('vi-VN');
+        return res.send(`Tài khoản của bạn đã bị khóa đến ngày: <b>${lockTime}</b>. <br><br><a href='/auth'>Quay lại</a>`);
+    }
+
     res.cookie('username', username, { maxAge: 30 * 24 * 60 * 60 * 1000 });
     res.redirect('/dashboard');
 });
@@ -196,7 +272,7 @@ app.post('/api/login', async (req, res) => {
 app.get('/logout', (req, res) => { res.clearCookie('username'); res.redirect('/'); });
 
 // ==========================================
-// 4. TRANG CHỦ & KHO PHỤ ĐỀ (CÓ GỘP NHÓM + POSTER)
+// 4. TRANG CHỦ & KHO PHỤ ĐỀ (GỘP NHÓM)
 // ==========================================
 app.get('/', (req, res) => res.redirect('/dashboard'));
 
@@ -213,7 +289,6 @@ app.get('/dashboard', async (req, res) => {
         }
     }
 
-    // Tải dữ liệu kho phụ đề
     const subsSnapshot = await getDocs(collection(db, "shared_subs"));
     const allSubs = [];
     const leaderBoardData = {};
@@ -227,36 +302,38 @@ app.get('/dashboard', async (req, res) => {
     // Gom nhóm phim tự động
     const groupedSubs = {};
     allSubs.forEach(sub => {
-        // Lọc bớt chữ "Mùa X Tập Y" hoặc "(202x)" để lấy tên gốc làm tên nhóm
         let baseName = sub.movieName.replace(/\s*\((Mùa|Season|Tập|Ep|\d{4}).*?\)/i, '').trim();
         if (!groupedSubs[baseName]) groupedSubs[baseName] = [];
         groupedSubs[baseName].push(sub);
     });
 
-    // Render Kho Phụ Đề
     let dbHtml = '';
     if (allSubs.length === 0) {
         dbHtml = '<p style="text-align:center;">Kho trống.</p>';
     } else {
-        // Sắp xếp các nhóm theo bảng chữ cái A-Z
         const sortedGroupNames = Object.keys(groupedSubs).sort((a, b) => a.localeCompare(b));
+        let groupIndex = 0;
         
         for (const baseName of sortedGroupNames) {
             const group = groupedSubs[baseName];
-            // Sắp xếp các tập bên trong nhóm theo thời gian (mới nhất lên đầu)
             group.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
             
+            // Render tiêu đề thư mục (Click để mở)
             dbHtml += `
                 <div class="sub-group">
-                    <h4 class="sub-group-title">📁 ${baseName}</h4>
-                    <ul class="db-list">`;
+                    <h4 class="sub-group-title" onclick="toggleGroup(${groupIndex})">
+                        <span>📁 ${baseName} <span style="font-size:12px; color:#666;">(${group.length} mục)</span></span>
+                        <span id="icon-${groupIndex}">▼</span>
+                    </h4>
+                    <ul class="db-list" id="group-${groupIndex}">`;
             
+            // Render nội dung bên trong
             group.forEach(sub => {
-                const posterUrl = sub.poster || 'https://via.placeholder.com/60x90?text=Sub';
+                const posterUrl = sub.poster || 'https://placehold.co/60x90/2c3e50/FFF?text=No+Poster';
                 dbHtml += `
                     <li class="db-item">
                         <div style="display: flex; align-items: center;">
-                            <img src="${posterUrl}" alt="Poster">
+                            <img src="${posterUrl}" onerror="this.onerror=null; this.src='https://placehold.co/60x90/2c3e50/FFF?text=No+Poster';" alt="Poster">
                             <div>
                                 <b style="font-size: 15px;">${sub.movieName}</b><br>
                                 <span style="font-size: 12px; color: #888;">⏱️ ${new Date(sub.createdAt).toLocaleDateString()} | 👤 ${sub.translatedBy}</span>
@@ -265,16 +342,17 @@ app.get('/dashboard', async (req, res) => {
                         <div style="display:flex; flex-wrap: wrap; gap: 5px; justify-content: flex-end;">
                             <button onclick="previewSub('${sub.id}', '${sub.movieName}')" class="btn-preview">📄 Xem</button>
                             <a href="/download/${sub.id}?mode=bilingual" class="btn-dl">📥 Song Ngữ</a>
-                            <a href="/download/${sub.id}?mode=vi" class="btn-dl" style="background:#17a2b8;">📥 Tiếng Việt</a>
+                            <a href="/download/${sub.id}?mode=vi" class="btn-dl" style="background:#17a2b8;">📥 Thuần Việt</a>
                             ${(role === 'admin' || sub.translatedBy === username) ? `<a href="/delete-sub/${sub.id}" class="btn-del" onclick="return confirm('Xóa?')">🗑️</a>` : ''}
                         </div>
                     </li>`;
             });
             dbHtml += `</ul></div>`;
+            groupIndex++;
         }
     }
 
-    // Render Bảng Vàng (Leaderboard)
+    // Render Bảng Vàng
     const sortedLeaders = Object.entries(leaderBoardData).sort((a,b) => b[1] - a[1]).slice(0, 5);
     let leaderHtml = sortedLeaders.length ? sortedLeaders.map((l, i) => `
         <div class="leaderboard-item">
@@ -287,12 +365,22 @@ app.get('/dashboard', async (req, res) => {
     let adminHtml = '';
     if (role === 'admin') {
         const usersSnap = await getDocs(collection(db, "users"));
-        adminHtml += `<table><tr><th>Username</th><th>Phân quyền</th><th>Hành động</th></tr>`;
+        adminHtml += `<table><tr><th>Username</th><th>Phân quyền</th><th>Trạng thái</th><th>Hành động</th></tr>`;
         usersSnap.forEach(u => {
+            const ud = u.data();
+            let statusHtml = '<span style="color:green">Hoạt động</span>';
+            if (ud.bannedUntil && new Date(ud.bannedUntil) > new Date()) {
+                statusHtml = `<span style="color:red">Bị khóa đến ${new Date(ud.bannedUntil).toLocaleDateString('vi-VN')}</span>`;
+            }
+
             adminHtml += `<tr>
                 <td><b>${u.id}</b></td>
-                <td>${u.data().role === 'admin' ? '👑 Admin' : '👤 User'}</td>
-                <td>${u.id !== username ? `<a href="/admin/delete-user/${u.id}" class="btn-del" onclick="return confirm('Xóa user này?')">Khóa/Xóa</a>` : '<i>(Bạn)</i>'}</td>
+                <td>${ud.role === 'admin' ? '👑 Admin' : '👤 User'}</td>
+                <td>${statusHtml}</td>
+                <td>${u.id !== username ? `
+                    <button onclick="actionUser('${u.id}', 'lock')" class="btn-edit">Khóa</button>
+                    <button onclick="actionUser('${u.id}', 'delete')" class="btn-del">Xóa</button>
+                ` : '<i>(Bạn)</i>'}</td>
             </tr>`;
         });
         adminHtml += `</table>`;
@@ -324,19 +412,43 @@ app.get('/dashboard', async (req, res) => {
         ${role !== 'guest' ? `
         <div id="tab-search" class="tab-pane">
             <div class="card">
-                <h3 style="margin-top: 0;">🔍 TÌM KIẾM PHIM ĐỂ DỊCH (Từ Stremio)</h3>
-                <form action="/search" method="GET">
-                    <input type="text" name="query" placeholder="Nhập mã IMDb (VD: tt1046141) hoặc Tên phim..." required>
-                    <select name="type" onchange="handleTypeChange(this, 'autoSeasonGroup')">
-                        <option value="movie">Phim lẻ (Movie)</option>
-                        <option value="series">Phim bộ (Series)</option>
-                    </select>
-                    <div id="autoSeasonGroup" class="grid-2" style="display: none;">
-                        <input type="number" name="season" placeholder="Mùa mấy? (VD: 1)" min="1">
-                        <input type="number" name="episode" placeholder="Tập mấy? (VD: 2)" min="1">
-                    </div>
-                    <button type="submit" class="main-btn">🔍 Bắt Đầu Quét</button>
-                </form>
+                <h3 style="margin-top: 0; display: flex; justify-content: space-between; align-items: center;">
+                    🎬 TÌM KIẾM PHIM VÀ DỊCH
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="manualMode" onchange="toggleManualInput()">
+                        <span class="toggle-slider"></span>
+                        <span style="font-size: 12px; font-weight: normal; color: var(--text);">Nhập ID thủ công</span>
+                    </label>
+                </h3>
+                <div id="autoSearchGroup">
+                    <form action="/search" method="GET">
+                        <input type="text" name="query" placeholder="Tên phim (VD: Adventure Time, Avatar...)" required>
+                        <select name="type" onchange="handleTypeChange(this, 'autoSeasonGroup')">
+                            <option value="movie">Phim lẻ (Movie)</option>
+                            <option value="series">Phim bộ (Series)</option>
+                        </select>
+                        <div id="autoSeasonGroup" class="grid-2" style="display: none;">
+                            <input type="number" name="season" placeholder="Mùa mấy? (VD: 1)" min="1">
+                            <input type="number" name="episode" placeholder="Tập mấy? (VD: 2)" min="1">
+                        </div>
+                        <button type="submit" class="main-btn">🔍 Bắt Đầu Quét</button>
+                    </form>
+                </div>
+                <div id="manualSearchGroup" style="display: none; background: #e9ecef; padding: 15px; border-radius: 8px; border-left: 3px solid #6c757d;">
+                    <form action="/search-manual" method="GET">
+                        <input type="text" name="imdbId" placeholder="Mã IMDb ID gốc (vd: tt1046141)..." required style="background: white;">
+                        <input type="text" name="customName" placeholder="Tên phim hiển thị..." required style="background: white;">
+                        <select name="type" onchange="handleTypeChange(this, 'manualSeasonGroup')" style="background: white;">
+                            <option value="movie">Phim lẻ (Movie)</option>
+                            <option value="series">Phim bộ (Series)</option>
+                        </select>
+                        <div id="manualSeasonGroup" class="grid-2" style="display: none;">
+                            <input type="number" name="season" placeholder="Mùa mấy? (VD: 1)" min="1" style="background: white;">
+                            <input type="number" name="episode" placeholder="Tập mấy? (VD: 2)" min="1" style="background: white;">
+                        </div>
+                        <button type="submit" class="main-btn" style="background: #6c757d;">🔍 Truy Xuất ID Này</button>
+                    </form>
+                </div>
             </div>
         </div>
 
@@ -356,7 +468,7 @@ app.get('/dashboard', async (req, res) => {
                 <h3 style="margin-top: 0;">🔑 CẤU HÌNH API AI</h3>
                 <form action="/save-key" method="POST">
                     <select name="geminiModel">
-                        <option value="gemini-2.5-flash" ${currentModel === 'gemini-2.5-flash' ? 'selected' : ''}>Gemini 2.5 Flash (Tốc độ cao)</option>
+                        <option value="gemini-2.5-flash" ${currentModel === 'gemini-2.5-flash' ? 'selected' : ''}>Gemini 2.5 Flash</option>
                         <option value="gemini-1.5-flash" ${currentModel === 'gemini-1.5-flash' ? 'selected' : ''}>Gemini 1.5 Flash</option>
                     </select>
                     <input type="text" name="geminiKey" value="${geminiKey}" placeholder="Dán API Key (AIza...)" required>
@@ -378,7 +490,7 @@ app.get('/dashboard', async (req, res) => {
 });
 
 // ==========================================
-// 5. CÁC ROUTE XỬ LÝ CHÍNH
+// 5. CÁC ROUTE QUẢN TRỊ VÀ API
 // ==========================================
 app.post('/save-key', async (req, res) => {
     const username = getLoggedInUser(req);
@@ -386,6 +498,7 @@ app.post('/save-key', async (req, res) => {
     res.redirect('/dashboard');
 });
 
+// Chức năng Xóa User
 app.get('/admin/delete-user/:id', async (req, res) => {
     const username = getLoggedInUser(req);
     const userSnap = await getDoc(doc(db, "users", username));
@@ -393,14 +506,31 @@ app.get('/admin/delete-user/:id', async (req, res) => {
     res.redirect('/dashboard');
 });
 
-// API Trả về nội dung thô để xem trước
+// Chức năng Khóa User theo ngày
+app.get('/admin/lock-user/:id', async (req, res) => {
+    const username = getLoggedInUser(req);
+    const userSnap = await getDoc(doc(db, "users", username));
+    if (userSnap.exists() && userSnap.data().role === 'admin') {
+        const days = parseInt(req.query.days);
+        const targetRef = doc(db, "users", req.params.id);
+        if (days > 0) {
+            const banDate = new Date();
+            banDate.setDate(banDate.getDate() + days);
+            await setDoc(targetRef, { bannedUntil: banDate.toISOString() }, { merge: true });
+        } else {
+            // Mở khóa nếu nhập 0
+            await setDoc(targetRef, { bannedUntil: null }, { merge: true });
+        }
+    }
+    res.redirect('/dashboard');
+});
+
 app.get('/api/raw-sub/:id', async (req, res) => {
     const subSnap = await getDoc(doc(db, "shared_subs", req.params.id));
     if (!subSnap.exists()) return res.send("Không tìm thấy dữ liệu phụ đề.");
     res.send(subSnap.data().vttContent);
 });
 
-// Tải file với tên chuẩn tiếng Anh
 app.get('/download/:id', async (req, res) => {
     const { id } = req.params;
     const { mode } = req.query;
@@ -429,7 +559,7 @@ app.get('/delete-sub/:id', async (req, res) => {
     res.redirect('/dashboard');
 });
 
-// TÌM KIẾM QUÉT MÃ IMDB
+// TÌM KIẾM (TRẢ VỀ TRANG TÌM KIẾM NẾU BẤM BACK)
 app.get('/search', async (req, res) => {
     const username = getLoggedInUser(req);
     if (!username) return res.redirect('/');
@@ -443,7 +573,7 @@ app.get('/search', async (req, res) => {
         const response = await axios.get(searchUrl, axiosConfig);
         const metas = query.startsWith('tt') ? [response.data.meta] : response.data.metas;
         
-        if (!metas || metas.length === 0 || !metas[0]) return res.send(renderHTML(`<h3>❌ Không tìm thấy phim</h3><br><a href="/dashboard">⬅ Trở về</a>`, username));
+        if (!metas || metas.length === 0 || !metas[0]) return res.send(renderHTML(`<h3>❌ Không tìm thấy phim</h3><br><a href="/dashboard?tab=search">⬅ Trở về</a>`, username));
         
         let resultsHTML = `<h3>Kết quả tìm kiếm cho "${query}":</h3>`;
         for (const meta of metas) {
@@ -454,19 +584,19 @@ app.get('/search', async (req, res) => {
                 displayName = `${meta.name} (Mùa ${season} Tập ${episode})`;
             }
 
+            const posterImg = meta.poster || 'https://placehold.co/60x90/2c3e50/FFF?text=No+Poster';
+
             const subSnap = await getDoc(doc(db, "shared_subs", fullId));
             if (subSnap.exists()) {
-                resultsHTML += `<div class="card"><img src="${meta.poster}" style="width:50px;float:left;margin-right:10px;"><b>${displayName}</b><br><span style="color:green;">⚡ Đã có trong Kho!</span><br><br><a href="/download/${fullId}?mode=bilingual" class="btn-dl">Tải Song Ngữ</a></div>`;
+                resultsHTML += `<div class="card" style="display:flex; align-items:center;"><img src="${posterImg}" onerror="this.onerror=null; this.src='https://placehold.co/60x90/2c3e50/FFF?text=No+Poster';" style="width:60px;height:90px;object-fit:cover;border-radius:4px;margin-right:15px;"><div style="flex-grow:1;"><b>${displayName}</b><br><span style="color:green;font-size:13px;">⚡ Đã có trong Kho!</span></div><a href="/download/${fullId}?mode=bilingual" class="btn-dl">📥 Tải Song Ngữ</a></div>`;
             } else {
-                // Đính kèm poster vào url để lát nữa lưu vào Firebase
-                resultsHTML += `<div class="card"><img src="${meta.poster}" style="width:50px;float:left;margin-right:10px;"><b>${displayName}</b><br><span style="color:orange;">☁️ Cần dịch AI</span><br><br><a href="/trigger-translate?type=${type}&id=${fullId}&name=${encodeURIComponent(displayName)}&poster=${encodeURIComponent(meta.poster || '')}" class="btn-dl" style="background:#007bff;">🚀 Bắt Đầu Dịch</a></div>`;
+                resultsHTML += `<div class="card" style="display:flex; align-items:center;"><img src="${posterImg}" onerror="this.onerror=null; this.src='https://placehold.co/60x90/2c3e50/FFF?text=No+Poster';" style="width:60px;height:90px;object-fit:cover;border-radius:4px;margin-right:15px;"><div style="flex-grow:1;"><b>${displayName}</b><br><span style="color:orange;font-size:13px;">☁️ Cần dịch AI</span></div><a href="/trigger-translate?type=${type}&id=${fullId}&name=${encodeURIComponent(displayName)}&poster=${encodeURIComponent(posterImg)}" class="btn-dl" style="background:#007bff;">🚀 Bắt Đầu Dịch</a></div>`;
             }
         }
-        res.send(renderHTML(resultsHTML + `<br><a href="/dashboard" class="main-btn" style="text-decoration:none;">⬅ Trở Về</a>`, username));
-    } catch (e) { res.send(renderHTML(`<h3>Lỗi: ${e.message}</h3><br><a href="/dashboard">⬅ Trở về</a>`, username)); }
+        res.send(renderHTML(resultsHTML + `<br><a href="/dashboard?tab=search" class="main-btn" style="text-decoration:none; display:inline-block; padding:10px;">⬅ Trở Về Tìm Kiếm</a>`, username));
+    } catch (e) { res.send(renderHTML(`<h3>Lỗi: ${e.message}</h3><br><a href="/dashboard?tab=search">⬅ Trở về Tìm Kiếm</a>`, username)); }
 });
 
-// DỊCH FILE UPLOAD THỦ CÔNG
 app.post('/upload-translate', upload.single('subFile'), async (req, res) => {
     const username = getLoggedInUser(req);
     if (!username || !req.file) return res.redirect('/dashboard');
@@ -493,7 +623,7 @@ app.get('/api/cancel-task', (req, res) => {
 
 app.get('/trigger-translate', async (req, res) => {
     const username = getLoggedInUser(req);
-    const { type, id, name, poster } = req.query; // Nhận thêm biến poster
+    const { type, id, name, poster } = req.query; 
     const userSnap = await getDoc(doc(db, "users", username));
     if (!userSnap.data().geminiKey) return res.send("Lỗi: Chưa cài API Key.");
     
@@ -548,7 +678,6 @@ app.get('/status-page', (req, res) => {
 
 app.get('/api/task-status', (req, res) => res.json(activeTasks[req.query.taskId] || { status: 'Lỗi', progress: 0 }));
 
-// Thêm biến posterUrl vào hàm
 async function runGeminiTranslation(taskId, type, id, movieName, username, apiKey, modelName, rawSubData = null, posterUrl = '') {
     const updateTask = (status, progress) => { if (activeTasks[taskId] && !activeTasks[taskId].isCancelled) { activeTasks[taskId].status = status; activeTasks[taskId].progress = progress; } };
     try {
@@ -608,16 +737,15 @@ async function runGeminiTranslation(taskId, type, id, movieName, username, apiKe
             else { finalVttContent += block.meta + "\n" + block.text + "\n<font color='#f1c40f'>" + (translatedTexts[textIndex] || block.text) + "</font>\n\n"; textIndex++; }
         });
 
-        // Đẩy kèm poster lên Firebase
         await setDoc(doc(db, "shared_subs", id), { 
             movieName: movieName, 
             vttContent: finalVttContent, 
             translatedBy: username, 
-            poster: posterUrl || '', // <--- Lưu ảnh vào database
+            poster: posterUrl || '', 
             createdAt: new Date().toISOString() 
         });
         updateTask('Hoàn thành 🎉', 100);
     } catch (err) { if (!activeTasks[taskId].isCancelled) updateTask(`❌ Lỗi: ${err.message}`, 0); }
 }
 
-app.listen(PORT, () => { console.log(`🚀 KHO PHỤ ĐỀ AI (V2.2 - GỘP NHÓM & XEM TRƯỚC) CHẠY TẠI CỔNG 7000`); });
+app.listen(PORT, () => { console.log(`🚀 KHO PHỤ ĐỀ AI (V3.0) CHẠY TẠI CỔNG 7000`); });
