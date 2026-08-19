@@ -574,18 +574,21 @@ async function runTranslation(taskId, type, id, movieName, username, uData, rawS
                 try {
                     let parsedData;
                     if (mode === 'groq') {
-                        // Gọi Groq API
+                        // Gọi Groq API chuẩn OpenAI
                         const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
                             model: "llama-3.3-70b-versatile",
                             messages: [
-                                { role: "system", content: "Bạn là biên dịch viên phim chuyên nghiệp. Dịch mảng JSON sang tiếng Việt. CHỈ TRẢ VỀ JSON HỢP LỆ." },
-                                { role: "user", content: `Dữ liệu:\n${JSON.stringify(chunkObj)}` }
-                            ]
+                                { role: "system", content: "Bạn là hệ thống dịch phụ đề phim tự động. Nhiệm vụ của bạn là dịch các giá trị văn bản trong định dạng JSON từ tiếng Anh sang tiếng Việt. TUYỆT ĐỐI GIỮ NGUYÊN CÁC KHÓA (KEYS) SỐ NGUYÊN. CHỈ TRẢ VỀ ĐÚNG CẤU TRÚC ĐỐI TƯỢNG JSON, không kèm bất kỳ giải thích nào khác." },
+                                { role: "user", content: JSON.stringify(chunkObj) }
+                            ],
+                            temperature: 0.3
                         }, { headers: { 'Authorization': `Bearer ${uData.groqKey}`, 'Content-Type': 'application/json' }});
                         
                         let text = response.data.choices[0].message.content.replace(/```json/g, '').replace(/```/g, '').trim();
-                        const arrayMatch = text.match(/\{[\s\S]*\}/);
-                        parsedData = JSON.parse(arrayMatch ? arrayMatch[0] : text);
+                        // Trích xuất chính xác chuỗi JSON
+                        const jsonMatch = text.match(/\{[\s\S]*\}/);
+                        parsedData = JSON.parse(jsonMatch ? jsonMatch[0] : text);
+                    }
                     } else {
                         // Gọi Gemini API (Mặc định)
                         const aiResponse = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${uData.geminiKey}`, { 
