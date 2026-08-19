@@ -42,7 +42,7 @@ const removeVietnameseTones = (str) => {
 const axiosConfig = { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } };
 
 // ==========================================
-// 2. GIAO DIỆN HTML TỔNG (Có Modal Xem Trước Sub)
+// 2. GIAO DIỆN HTML TỔNG
 // ==========================================
 const renderHTML = (content, username = null, role = 'guest') => `
     <html>
@@ -71,13 +71,22 @@ const renderHTML = (content, username = null, role = 'guest') => `
             .tab-pane.active { display: block; }
             @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
             .card { background: var(--bg); padding: 20px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 20px; }
-            .db-item { display: flex; justify-content: space-between; align-items: center; padding: 15px; border-bottom: 1px solid var(--border); }
+            
+            /* CSS Gộp nhóm phim & Poster */
+            .sub-group { margin-bottom: 15px; background: var(--box-bg); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+            .sub-group-title { background: rgba(0, 123, 255, 0.1); padding: 10px 15px; margin: 0; font-size: 16px; color: #007bff; border-bottom: 1px solid var(--border); }
+            .db-list { list-style: none; padding: 0; margin: 0; }
+            .db-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 15px; border-bottom: 1px solid var(--border); transition: 0.2s; }
+            .db-item:last-child { border-bottom: none; }
+            .db-item:hover { background: var(--bg); }
+            .db-item img { width: 45px; height: 65px; object-fit: cover; border-radius: 4px; margin-right: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+            
             .leaderboard-item { display: flex; justify-content: space-between; padding: 10px; background: var(--input-bg); margin-bottom: 5px; border-radius: 5px; border: 1px solid var(--border);}
             table { width: 100%; border-collapse: collapse; margin-top: 10px; }
             th, td { border: 1px solid var(--border); padding: 10px; text-align: left; }
             th { background: rgba(0,0,0,0.05); }
 
-            /* CSS cho Modal Xem Trước Sub */
+            /* CSS Modal */
             .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); backdrop-filter: blur(3px); }
             .modal-content { background: var(--box-bg); margin: 5% auto; padding: 20px; border: 1px solid var(--border); width: 80%; max-width: 700px; border-radius: 10px; max-height: 80vh; display: flex; flex-direction: column; }
             .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
@@ -94,23 +103,17 @@ const renderHTML = (content, username = null, role = 'guest') => `
             function handleTypeChange(sel, targetId) {
                 document.getElementById(targetId).style.display = sel.value === 'series' ? 'grid' : 'none';
             }
-
-            // Hàm mở Modal Xem Trước Sub
             async function previewSub(id, movieName) {
                 document.getElementById('modalTitle').innerText = "📄 Xem trước: " + movieName;
                 document.getElementById('subPreviewText').innerText = "⏳ Đang tải nội dung phụ đề...";
                 document.getElementById('subModal').style.display = "block";
-
                 try {
                     const res = await fetch('/api/raw-sub/' + id);
-                    const text = await res.text();
-                    document.getElementById('subPreviewText').innerText = text;
-                } catch(e) {
-                    document.getElementById('subPreviewText').innerText = "❌ Không thể tải nội dung phụ đề.";
-                }
+                    document.getElementById('subPreviewText').innerText = await res.text();
+                } catch(e) { document.getElementById('subPreviewText').innerText = "❌ Lỗi tải phụ đề."; }
             }
             function closeModal() { document.getElementById('subModal').style.display = "none"; }
-            window.onclick = function(event) { if (event.target == document.getElementById('subModal')) closeModal(); }
+            window.onclick = function(e) { if (e.target == document.getElementById('subModal')) closeModal(); }
         </script>
     </head>
     <body>
@@ -127,7 +130,7 @@ const renderHTML = (content, username = null, role = 'guest') => `
             ${content}
         </div>
 
-        <!-- MODAL HTML -->
+        <!-- MODAL XEM TRƯỚC -->
         <div id="subModal" class="modal">
             <div class="modal-content">
                 <div class="modal-header">
@@ -163,7 +166,6 @@ app.get('/auth', (req, res) => {
                     <input type="password" name="password" placeholder="Tạo mật khẩu..." required>
                     <button type="submit" class="main-btn" style="background: #28a745;">Đăng Ký</button>
                 </form>
-                <p style="font-size:12px; color:#666; margin-bottom:0;">*Người đăng ký đầu tiên sẽ là Admin.</p>
             </div>
         </div>
     `));
@@ -194,7 +196,7 @@ app.post('/api/login', async (req, res) => {
 app.get('/logout', (req, res) => { res.clearCookie('username'); res.redirect('/'); });
 
 // ==========================================
-// 4. TRANG CHỦ & PHÂN QUYỀN
+// 4. TRANG CHỦ & KHO PHỤ ĐỀ (CÓ GỘP NHÓM + POSTER)
 // ==========================================
 app.get('/', (req, res) => res.redirect('/dashboard'));
 
@@ -211,6 +213,7 @@ app.get('/dashboard', async (req, res) => {
         }
     }
 
+    // Tải dữ liệu kho phụ đề
     const subsSnapshot = await getDocs(collection(db, "shared_subs"));
     const allSubs = [];
     const leaderBoardData = {};
@@ -221,8 +224,57 @@ app.get('/dashboard', async (req, res) => {
         leaderBoardData[data.translatedBy] = (leaderBoardData[data.translatedBy] || 0) + 1;
     });
 
-    allSubs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    // Gom nhóm phim tự động
+    const groupedSubs = {};
+    allSubs.forEach(sub => {
+        // Lọc bớt chữ "Mùa X Tập Y" hoặc "(202x)" để lấy tên gốc làm tên nhóm
+        let baseName = sub.movieName.replace(/\s*\((Mùa|Season|Tập|Ep|\d{4}).*?\)/i, '').trim();
+        if (!groupedSubs[baseName]) groupedSubs[baseName] = [];
+        groupedSubs[baseName].push(sub);
+    });
 
+    // Render Kho Phụ Đề
+    let dbHtml = '';
+    if (allSubs.length === 0) {
+        dbHtml = '<p style="text-align:center;">Kho trống.</p>';
+    } else {
+        // Sắp xếp các nhóm theo bảng chữ cái A-Z
+        const sortedGroupNames = Object.keys(groupedSubs).sort((a, b) => a.localeCompare(b));
+        
+        for (const baseName of sortedGroupNames) {
+            const group = groupedSubs[baseName];
+            // Sắp xếp các tập bên trong nhóm theo thời gian (mới nhất lên đầu)
+            group.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            
+            dbHtml += `
+                <div class="sub-group">
+                    <h4 class="sub-group-title">📁 ${baseName}</h4>
+                    <ul class="db-list">`;
+            
+            group.forEach(sub => {
+                const posterUrl = sub.poster || 'https://via.placeholder.com/60x90?text=Sub';
+                dbHtml += `
+                    <li class="db-item">
+                        <div style="display: flex; align-items: center;">
+                            <img src="${posterUrl}" alt="Poster">
+                            <div>
+                                <b style="font-size: 15px;">${sub.movieName}</b><br>
+                                <span style="font-size: 12px; color: #888;">⏱️ ${new Date(sub.createdAt).toLocaleDateString()} | 👤 ${sub.translatedBy}</span>
+                            </div>
+                        </div>
+                        <div style="display:flex; flex-wrap: wrap; gap: 5px; justify-content: flex-end;">
+                            <button onclick="previewSub('${sub.id}', '${sub.movieName}')" class="btn-preview">📄 Xem</button>
+                            <a href="/download/${sub.id}?mode=bilingual" class="btn-dl">📥 Song Ngữ</a>
+                            <a href="/download/${sub.id}?mode=vi" class="btn-dl" style="background:#17a2b8;">📥 Tiếng Việt</a>
+                            ${(role === 'admin' || sub.translatedBy === username) ? `<a href="/delete-sub/${sub.id}" class="btn-del" onclick="return confirm('Xóa?')">🗑️</a>` : ''}
+                        </div>
+                    </li>`;
+            });
+            dbHtml += `</ul></div>`;
+        }
+    }
+
+    // Render Bảng Vàng (Leaderboard)
     const sortedLeaders = Object.entries(leaderBoardData).sort((a,b) => b[1] - a[1]).slice(0, 5);
     let leaderHtml = sortedLeaders.length ? sortedLeaders.map((l, i) => `
         <div class="leaderboard-item">
@@ -231,44 +283,23 @@ app.get('/dashboard', async (req, res) => {
         </div>
     `).join('') : '<p style="font-size:13px;">Chưa có dữ liệu</p>';
 
-    let dbHtml = '';
-    if (allSubs.length === 0) dbHtml = '<p style="text-align:center;">Kho trống.</p>';
-    else {
-        allSubs.forEach(sub => {
-            dbHtml += `
-                <div class="db-item">
-                    <div>
-                        <b style="font-size: 15px;">${sub.movieName}</b><br>
-                        <span style="font-size: 12px; color: #888;">⏱️ ${new Date(sub.createdAt).toLocaleDateString()} | 👤 ${sub.translatedBy}</span>
-                    </div>
-                    <div style="display:flex; flex-wrap: wrap; gap: 5px; justify-content: flex-end;">
-                        <button onclick="previewSub('${sub.id}', '${sub.movieName}')" class="btn-preview">📄 Xem trước</button>
-                        <a href="/download/${sub.id}?mode=bilingual" class="btn-dl">📥 Song Ngữ</a>
-                        <a href="/download/${sub.id}?mode=vi" class="btn-dl" style="background:#17a2b8;">📥 Tiếng Việt</a>
-                        ${(role === 'admin' || sub.translatedBy === username) ? `<a href="/delete-sub/${sub.id}" class="btn-del" onclick="return confirm('Xóa?')">🗑️</a>` : ''}
-                    </div>
-                </div>`;
-        });
-    }
-
+    // Render Admin Panel
     let adminHtml = '';
     if (role === 'admin') {
         const usersSnap = await getDocs(collection(db, "users"));
-        adminHtml += `<table><tr><th>Username</th><th>Phân quyền</th><th>Ngày tham gia</th><th>Hành động</th></tr>`;
+        adminHtml += `<table><tr><th>Username</th><th>Phân quyền</th><th>Hành động</th></tr>`;
         usersSnap.forEach(u => {
-            const ud = u.data();
             adminHtml += `<tr>
                 <td><b>${u.id}</b></td>
-                <td>${ud.role === 'admin' ? '👑 Admin' : '👤 User'}</td>
-                <td>${new Date(ud.createdAt).toLocaleDateString()}</td>
-                <td>${u.id !== username ? `<a href="/admin/delete-user/${u.id}" class="btn-del" onclick="return confirm('Xóa user?')">Xóa</a>` : '<i>(Bạn)</i>'}</td>
+                <td>${u.data().role === 'admin' ? '👑 Admin' : '👤 User'}</td>
+                <td>${u.id !== username ? `<a href="/admin/delete-user/${u.id}" class="btn-del" onclick="return confirm('Xóa user này?')">Khóa/Xóa</a>` : '<i>(Bạn)</i>'}</td>
             </tr>`;
         });
         adminHtml += `</table>`;
     }
 
     res.send(renderHTML(`
-        <div class="card" style="border-top: 4px solid #f39c12;">
+        <div class="card" style="border-top: 4px solid #f39c12; margin-bottom: 20px;">
             <h3 style="margin-top:0;">🏆 BẢNG VÀNG CỐNG HIẾN</h3>
             ${leaderHtml}
         </div>
@@ -325,7 +356,7 @@ app.get('/dashboard', async (req, res) => {
                 <h3 style="margin-top: 0;">🔑 CẤU HÌNH API AI</h3>
                 <form action="/save-key" method="POST">
                     <select name="geminiModel">
-                        <option value="gemini-2.5-flash" ${currentModel === 'gemini-2.5-flash' ? 'selected' : ''}>Gemini 2.5 Flash</option>
+                        <option value="gemini-2.5-flash" ${currentModel === 'gemini-2.5-flash' ? 'selected' : ''}>Gemini 2.5 Flash (Tốc độ cao)</option>
                         <option value="gemini-1.5-flash" ${currentModel === 'gemini-1.5-flash' ? 'selected' : ''}>Gemini 1.5 Flash</option>
                     </select>
                     <input type="text" name="geminiKey" value="${geminiKey}" placeholder="Dán API Key (AIza...)" required>
@@ -358,9 +389,7 @@ app.post('/save-key', async (req, res) => {
 app.get('/admin/delete-user/:id', async (req, res) => {
     const username = getLoggedInUser(req);
     const userSnap = await getDoc(doc(db, "users", username));
-    if (userSnap.exists() && userSnap.data().role === 'admin') {
-        await deleteDoc(doc(db, "users", req.params.id));
-    }
+    if (userSnap.exists() && userSnap.data().role === 'admin') await deleteDoc(doc(db, "users", req.params.id));
     res.redirect('/dashboard');
 });
 
@@ -383,9 +412,7 @@ app.get('/download/:id', async (req, res) => {
     const filename = `${safeName}_${mode === 'vi' ? 'Vietnamese' : 'Bilingual'}_CloudAI.vtt`;
     
     let content = data.vttContent;
-    if (mode === 'vi') {
-        content = content.replace(/^([^\n]+)\n(<font color='#f1c40f'>.*?<\/font>)$/gm, '$2');
-    }
+    if (mode === 'vi') content = content.replace(/^([^\n]+)\n(<font color='#f1c40f'>.*?<\/font>)$/gm, '$2');
 
     res.setHeader('Content-Type', 'text/vtt; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -402,15 +429,20 @@ app.get('/delete-sub/:id', async (req, res) => {
     res.redirect('/dashboard');
 });
 
+// TÌM KIẾM QUÉT MÃ IMDB
 app.get('/search', async (req, res) => {
     const username = getLoggedInUser(req);
     if (!username) return res.redirect('/');
     const { query, type, season, episode } = req.query;
-    let searchUrl = query.startsWith('tt') ? `https://v3-cinemeta.strem.io/meta/${type}/${query}.json` : `https://v3-cinemeta.strem.io/catalog/${type}/top/search=${encodeURIComponent(query)}.json`;
+    
+    let searchUrl = query.startsWith('tt') 
+        ? `https://v3-cinemeta.strem.io/meta/${type}/${query}.json` 
+        : `https://v3-cinemeta.strem.io/catalog/${type}/top/search=${encodeURIComponent(query)}.json`;
 
     try {
         const response = await axios.get(searchUrl, axiosConfig);
         const metas = query.startsWith('tt') ? [response.data.meta] : response.data.metas;
+        
         if (!metas || metas.length === 0 || !metas[0]) return res.send(renderHTML(`<h3>❌ Không tìm thấy phim</h3><br><a href="/dashboard">⬅ Trở về</a>`, username));
         
         let resultsHTML = `<h3>Kết quả tìm kiếm cho "${query}":</h3>`;
@@ -426,16 +458,19 @@ app.get('/search', async (req, res) => {
             if (subSnap.exists()) {
                 resultsHTML += `<div class="card"><img src="${meta.poster}" style="width:50px;float:left;margin-right:10px;"><b>${displayName}</b><br><span style="color:green;">⚡ Đã có trong Kho!</span><br><br><a href="/download/${fullId}?mode=bilingual" class="btn-dl">Tải Song Ngữ</a></div>`;
             } else {
-                resultsHTML += `<div class="card"><img src="${meta.poster}" style="width:50px;float:left;margin-right:10px;"><b>${displayName}</b><br><span style="color:orange;">☁️ Cần dịch AI</span><br><br><a href="/trigger-translate?type=${type}&id=${fullId}&name=${encodeURIComponent(displayName)}" class="btn-dl" style="background:#007bff;">🚀 Bắt Đầu Dịch</a></div>`;
+                // Đính kèm poster vào url để lát nữa lưu vào Firebase
+                resultsHTML += `<div class="card"><img src="${meta.poster}" style="width:50px;float:left;margin-right:10px;"><b>${displayName}</b><br><span style="color:orange;">☁️ Cần dịch AI</span><br><br><a href="/trigger-translate?type=${type}&id=${fullId}&name=${encodeURIComponent(displayName)}&poster=${encodeURIComponent(meta.poster || '')}" class="btn-dl" style="background:#007bff;">🚀 Bắt Đầu Dịch</a></div>`;
             }
         }
         res.send(renderHTML(resultsHTML + `<br><a href="/dashboard" class="main-btn" style="text-decoration:none;">⬅ Trở Về</a>`, username));
     } catch (e) { res.send(renderHTML(`<h3>Lỗi: ${e.message}</h3><br><a href="/dashboard">⬅ Trở về</a>`, username)); }
 });
 
+// DỊCH FILE UPLOAD THỦ CÔNG
 app.post('/upload-translate', upload.single('subFile'), async (req, res) => {
     const username = getLoggedInUser(req);
     if (!username || !req.file) return res.redirect('/dashboard');
+    
     fs.readFile(req.file.path, 'utf8', async (err, data) => {
         fs.unlinkSync(req.file.path);
         const userSnap = await getDoc(doc(db, "users", username));
@@ -443,7 +478,7 @@ app.post('/upload-translate', upload.single('subFile'), async (req, res) => {
         
         const taskId = `upload-${Date.now()}`;
         activeTasks[taskId] = { status: 'Đang nạp file...', progress: 0, movieName: req.body.movieName, movieId: taskId, isCancelled: false };
-        runGeminiTranslation(taskId, 'manual', taskId, req.body.movieName, username, userSnap.data().geminiKey, userSnap.data().geminiModel, data);
+        runGeminiTranslation(taskId, 'manual', taskId, req.body.movieName, username, userSnap.data().geminiKey, userSnap.data().geminiModel, data, '');
         res.redirect(`/status-page?taskId=${taskId}`);
     });
 });
@@ -458,13 +493,13 @@ app.get('/api/cancel-task', (req, res) => {
 
 app.get('/trigger-translate', async (req, res) => {
     const username = getLoggedInUser(req);
-    const { type, id, name } = req.query;
+    const { type, id, name, poster } = req.query; // Nhận thêm biến poster
     const userSnap = await getDoc(doc(db, "users", username));
     if (!userSnap.data().geminiKey) return res.send("Lỗi: Chưa cài API Key.");
     
     const taskId = `${id}-${Date.now()}`;
     activeTasks[taskId] = { status: 'Đang chuẩn bị...', progress: 0, movieName: name, movieId: id, isCancelled: false };
-    runGeminiTranslation(taskId, type, id, name, username, userSnap.data().geminiKey, userSnap.data().geminiModel);
+    runGeminiTranslation(taskId, type, id, name, username, userSnap.data().geminiKey, userSnap.data().geminiModel, null, poster);
     res.redirect(`/status-page?taskId=${taskId}`);
 });
 
@@ -513,7 +548,8 @@ app.get('/status-page', (req, res) => {
 
 app.get('/api/task-status', (req, res) => res.json(activeTasks[req.query.taskId] || { status: 'Lỗi', progress: 0 }));
 
-async function runGeminiTranslation(taskId, type, id, movieName, username, apiKey, modelName, rawSubData = null) {
+// Thêm biến posterUrl vào hàm
+async function runGeminiTranslation(taskId, type, id, movieName, username, apiKey, modelName, rawSubData = null, posterUrl = '') {
     const updateTask = (status, progress) => { if (activeTasks[taskId] && !activeTasks[taskId].isCancelled) { activeTasks[taskId].status = status; activeTasks[taskId].progress = progress; } };
     try {
         let subContent = "";
@@ -572,9 +608,16 @@ async function runGeminiTranslation(taskId, type, id, movieName, username, apiKe
             else { finalVttContent += block.meta + "\n" + block.text + "\n<font color='#f1c40f'>" + (translatedTexts[textIndex] || block.text) + "</font>\n\n"; textIndex++; }
         });
 
-        await setDoc(doc(db, "shared_subs", id), { movieName: movieName, vttContent: finalVttContent, translatedBy: username, createdAt: new Date().toISOString() });
+        // Đẩy kèm poster lên Firebase
+        await setDoc(doc(db, "shared_subs", id), { 
+            movieName: movieName, 
+            vttContent: finalVttContent, 
+            translatedBy: username, 
+            poster: posterUrl || '', // <--- Lưu ảnh vào database
+            createdAt: new Date().toISOString() 
+        });
         updateTask('Hoàn thành 🎉', 100);
     } catch (err) { if (!activeTasks[taskId].isCancelled) updateTask(`❌ Lỗi: ${err.message}`, 0); }
 }
 
-app.listen(PORT, () => { console.log(`🚀 KHO PHỤ ĐỀ AI (V2.1 SaaS) CHẠY TẠI CỔNG 7000`); });
+app.listen(PORT, () => { console.log(`🚀 KHO PHỤ ĐỀ AI (V2.2 - GỘP NHÓM & XEM TRƯỚC) CHẠY TẠI CỔNG 7000`); });
