@@ -35,16 +35,17 @@ const activeTasks = {};
 const getLoggedInUser = (req) => req.cookies.username || null;
 const hashPwd = (pwd) => crypto.createHash('sha256').update(pwd).digest('hex');
 
-// Chuẩn hóa tên file: Khử dấu và đổi "Mùa 1 Tập 2" -> "S1 E2"
+// Chuẩn hóa tên file tải về (Mùa 1 Tập 2 -> S1 E2, bỏ dấu)
 const formatFilename = (str) => {
     let s = str.replace(/Mùa\s*(\d+)/gi, 'S$1').replace(/Tập\s*(\d+)/gi, 'E$1');
-    return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').replace(/[^a-zA-Z0-9\s]/g, '').trim().replace(/\s+/g, '_');
+    s = s.replace(/Season\s*(\d+)/gi, 'S$1').replace(/Episode\s*(\d+)/gi, 'E$1');
+    return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').replace(/[^a-zA-Z0-9\s\-]/g, '').trim().replace(/\s+/g, '_');
 };
 
 const axiosConfig = { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } };
 
 // ==========================================
-// 2. GIAO DIỆN HTML TỔNG
+// 2. GIAO DIỆN HTML TỔNG (KÈM WIDGET DỊCH NGẦM)
 // ==========================================
 const renderHTML = (content, username = null, role = 'guest') => `
     <html>
@@ -103,8 +104,13 @@ const renderHTML = (content, username = null, role = 'guest') => `
             .toggle-slider:before { content: ""; position: absolute; width: 16px; height: 16px; border-radius: 50%; background-color: white; top: 2px; left: 2px; transition: 0.3s; }
             .toggle-switch input:checked + .toggle-slider { background-color: #007bff; }
             .toggle-switch input:checked + .toggle-slider:before { transform: translateX(20px); }
+            
+            /* WIDGET DỊCH NGẦM */
+            #bgTaskWidget { display: none; position: fixed; bottom: 20px; left: 20px; width: 320px; background: var(--box-bg); border: 2px solid #007bff; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); padding: 15px; z-index: 10000; transition: 0.3s; }
         </style>
         <script>
+            let checkTaskInterval;
+
             function openTab(id, btn) {
                 document.querySelectorAll('.tab-pane').forEach(e => e.classList.remove('active'));
                 document.querySelectorAll('.tab-btn').forEach(e => e.classList.remove('active'));
@@ -116,17 +122,13 @@ const renderHTML = (content, username = null, role = 'guest') => `
                 const list = document.getElementById('group-' + groupId);
                 const icon = document.getElementById('icon-' + groupId);
                 if(list.style.display === 'none' || list.style.display === '') {
-                    list.style.display = 'block';
-                    icon.innerText = '▲';
+                    list.style.display = 'block'; icon.innerText = '▲';
                 } else {
-                    list.style.display = 'none';
-                    icon.innerText = '▼';
+                    list.style.display = 'none'; icon.innerText = '▼';
                 }
             }
 
-            function handleTypeChange(sel, targetId) {
-                document.getElementById(targetId).style.display = sel.value === 'series' ? 'grid' : 'none';
-            }
+            function handleTypeChange(sel, targetId) { document.getElementById(targetId).style.display = sel.value === 'series' ? 'grid' : 'none'; }
 
             async function previewSub(id, movieName) {
                 document.getElementById('modalTitle').innerText = "📄 Xem trước: " + movieName;
@@ -142,14 +144,10 @@ const renderHTML = (content, username = null, role = 'guest') => `
 
             function actionUser(userId, action) {
                 if(action === 'delete') {
-                    if(confirm('Cảnh báo: Bạn có chắc chắn muốn xóa vĩnh viễn user này không?')) {
-                        window.location.href = '/admin/delete-user/' + userId;
-                    }
+                    if(confirm('Xóa vĩnh viễn user này không?')) window.location.href = '/admin/delete-user/' + userId;
                 } else if (action === 'lock') {
-                    const days = prompt('Nhập số ngày muốn khóa tài khoản này (Nhập 0 để mở khóa):', '7');
-                    if (days !== null) {
-                        window.location.href = '/admin/lock-user/' + userId + '?days=' + days;
-                    }
+                    const days = prompt('Nhập số ngày khóa (Nhập 0 để mở khóa):', '7');
+                    if (days !== null) window.location.href = '/admin/lock-user/' + userId + '?days=' + days;
                 }
             }
 
@@ -157,6 +155,95 @@ const renderHTML = (content, username = null, role = 'guest') => `
                 const isManual = document.getElementById('manualMode').checked;
                 document.getElementById('autoSearchGroup').style.display = isManual ? 'none' : 'block';
                 document.getElementById('manualSearchGroup').style.display = isManual ? 'block' : 'none';
+            }
+
+            // MỚI: TÍNH NĂNG WIDGET DỊCH NGẦM
+            function startTranslation(type, id, encodedName, encodedPoster) {
+                const name = decodeURIComponent(encodedName);
+                const poster = decodeURIComponent(encodedPoster);
+                showWidget(name, 0, 'Đang khởi tạo...');
+                fetch(\`/api/trigger-translate?type=\${type}&id=\${id}&name=\${encodedName}&poster=\${encodedPoster}\`)
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success) {
+                            localStorage.setItem('activeTaskId', data.taskId);
+                            pollTaskStatus();
+                        } else {
+                            alert('Lỗi: ' + data.message);
+                            hideWidget();
+                        }
+                    });
+            }
+
+            function pollTaskStatus() {
+                const taskId = localStorage.getItem('activeTaskId');
+                if (!taskId) return;
+                
+                document.getElementById('bgTaskWidget').style.display = 'block';
+                if(checkTaskInterval) clearInterval(checkTaskInterval);
+                
+                checkTaskInterval = setInterval(async () => {
+                    try {
+                        const res = await fetch('/api/task-status?taskId=' + taskId);
+                        const task = await res.json();
+                        if(task && task.status !== 'Lỗi') {
+                            document.getElementById('bgTaskName').innerText = task.movieName;
+                            document.getElementById('bgTaskStatus').innerText = task.status;
+                            document.getElementById('bgTaskBar').style.width = task.progress + '%';
+                            
+                            if(task.isCancelled || task.status.includes('Lỗi') || task.status === 'Hoàn thành 🎉') {
+                                clearInterval(checkTaskInterval);
+                                if(task.status === 'Hoàn thành 🎉') {
+                                    document.getElementById('bgTaskCancel').style.display = 'none';
+                                    document.getElementById('bgTaskDownload').style.display = 'block';
+                                    document.getElementById('bgTaskDlBi').href = '/download/' + task.movieId + '?mode=bilingual';
+                                    document.getElementById('bgTaskDlVi').href = '/download/' + task.movieId + '?mode=vi';
+                                    if(window.location.pathname.includes('/dashboard')) setTimeout(() => window.location.reload(), 5000);
+                                } else {
+                                    document.getElementById('bgTaskBar').style.background = '#dc3545';
+                                    document.getElementById('bgTaskStatus').style.color = '#dc3545';
+                                    document.getElementById('bgTaskCancel').style.display = 'none';
+                                }
+                                localStorage.removeItem('activeTaskId');
+                            }
+                        } else {
+                            clearInterval(checkTaskInterval);
+                            localStorage.removeItem('activeTaskId');
+                            hideWidget();
+                        }
+                    } catch(e) {}
+                }, 1500);
+            }
+
+            function showWidget(name, progress, status) {
+                document.getElementById('bgTaskWidget').style.display = 'block';
+                document.getElementById('bgTaskName').innerText = name;
+                document.getElementById('bgTaskStatus').innerText = status;
+                document.getElementById('bgTaskStatus').style.color = '#d35400';
+                document.getElementById('bgTaskBar').style.width = progress + '%';
+                document.getElementById('bgTaskBar').style.background = '#28a745';
+                document.getElementById('bgTaskCancel').style.display = 'block';
+                document.getElementById('bgTaskDownload').style.display = 'none';
+            }
+
+            function hideWidget() { document.getElementById('bgTaskWidget').style.display = 'none'; }
+            
+            async function cancelBgTask() {
+                if(confirm('Bạn có chắc muốn hủy tiến trình dịch đang chạy ngầm?')) {
+                    const taskId = localStorage.getItem('activeTaskId');
+                    if(taskId) await fetch('/api/cancel-task?taskId=' + taskId);
+                    clearInterval(checkTaskInterval);
+                    localStorage.removeItem('activeTaskId');
+                    document.getElementById('bgTaskStatus').innerText = '❌ Đã hủy';
+                    document.getElementById('bgTaskStatus').style.color = '#dc3545';
+                    document.getElementById('bgTaskBar').style.background = '#dc3545';
+                    document.getElementById('bgTaskCancel').style.display = 'none';
+                }
+            }
+
+            window.onload = () => { 
+                if(localStorage.getItem('darkMode') === 'true') document.body.classList.add('dark'); 
+                pollTaskStatus(); // Tiếp tục hiển thị widget dịch nếu load lại trang
             }
         </script>
     </head>
@@ -175,8 +262,7 @@ const renderHTML = (content, username = null, role = 'guest') => `
         </div>
 
         <!-- Herta Kuru Kuru GIF -->
-        <img src="https://media.tenor.com/FwO53Zl9Cq0AAAAi/herta-kuru-kuru-kururin.gif" 
-             style="position: fixed; bottom: 10px; right: 10px; width: 120px; z-index: 9999; pointer-events: none;">
+        <img src="https://media.tenor.com/FwO53Zl9Cq0AAAAi/herta-kuru-kuru-kururin.gif" style="position: fixed; bottom: 10px; right: 10px; width: 120px; z-index: 9999; pointer-events: none;">
 
         <!-- MODAL XEM TRƯỚC -->
         <div id="subModal" class="modal">
@@ -188,12 +274,31 @@ const renderHTML = (content, username = null, role = 'guest') => `
                 <pre id="subPreviewText">Đang tải...</pre>
             </div>
         </div>
+
+        <!-- WIDGET DỊCH NGẦM -->
+        <div id="bgTaskWidget">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <b id="bgTaskName" style="font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 250px; color: #007bff;">Đang tải...</b>
+                <button onclick="hideWidget()" style="background: none; border: none; font-size: 16px; cursor: pointer; color: var(--text); padding: 0;">✖</button>
+            </div>
+            <div style="background: var(--bg); border-radius: 10px; height: 8px; width: 100%; margin-bottom: 10px; overflow: hidden;">
+                <div id="bgTaskBar" style="background: #28a745; height: 100%; width: 0%; transition: 0.5s;"></div>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span id="bgTaskStatus" style="font-size: 12px; font-weight: bold; color: #d35400;">Khởi tạo...</span>
+                <button id="bgTaskCancel" onclick="cancelBgTask()" class="btn-del" style="padding: 4px 8px; font-size: 11px;">🛑 Hủy</button>
+            </div>
+            <div id="bgTaskDownload" style="display: none; margin-top: 10px; text-align: center;">
+                <a id="bgTaskDlBi" href="#" class="btn-dl" style="font-size: 11px; padding: 6px 10px;">📥 Song Ngữ</a>
+                <a id="bgTaskDlVi" href="#" class="btn-dl" style="font-size: 11px; padding: 6px 10px; background: #17a2b8;">📥 Thuần Việt</a>
+            </div>
+        </div>
     </body>
     </html>
 `;
 
 // ==========================================
-// 3. ĐĂNG NHẬP & ĐĂNG KÝ (Có Bảng Thông Báo Mới)
+// 3. ĐĂNG NHẬP & ĐĂNG KÝ
 // ==========================================
 app.get('/auth', (req, res) => {
     if (getLoggedInUser(req)) return res.redirect('/dashboard');
@@ -226,8 +331,7 @@ app.post('/api/register', async (req, res) => {
     if (userSnap.exists()) {
         return res.send(renderHTML(`
             <div class="card" style="text-align: center; border-top: 4px solid #dc3545; max-width: 400px; margin: 40px auto;">
-                <h3 style="color: #dc3545;">❌ Lỗi Đăng Ký</h3>
-                <p>Tài khoản <b>${username}</b> đã tồn tại trên hệ thống.</p>
+                <h3 style="color: #dc3545;">❌ Lỗi Đăng Ký</h3><p>Tài khoản <b>${username}</b> đã tồn tại trên hệ thống.</p>
                 <button onclick="history.back()" class="main-btn" style="width: auto; padding: 10px 20px;">⬅ Quay Lại</button>
             </div>
         `));
@@ -253,8 +357,7 @@ app.post('/api/login', async (req, res) => {
     if (!userSnap.exists() || userSnap.data().passwordHash !== hashPwd(password)) {
         return res.send(renderHTML(`
             <div class="card" style="text-align: center; border-top: 4px solid #dc3545; max-width: 400px; margin: 40px auto;">
-                <h3 style="color: #dc3545;">❌ Đăng Nhập Thất Bại</h3>
-                <p>Sai tên đăng nhập hoặc mật khẩu!</p>
+                <h3 style="color: #dc3545;">❌ Đăng Nhập Thất Bại</h3><p>Sai tên đăng nhập hoặc mật khẩu!</p>
                 <button onclick="history.back()" class="main-btn" style="width: auto; padding: 10px 20px;">⬅ Thử Lại</button>
             </div>
         `));
@@ -265,8 +368,7 @@ app.post('/api/login', async (req, res) => {
         const lockTime = new Date(userData.bannedUntil).toLocaleString('vi-VN');
         return res.send(renderHTML(`
             <div class="card" style="text-align: center; border-top: 4px solid #dc3545; max-width: 400px; margin: 40px auto;">
-                <h3 style="color: #dc3545;">🔒 Tài Khoản Bị Khóa</h3>
-                <p>Tài khoản của bạn đã bị khóa đến ngày: <br><b style="font-size: 18px;">${lockTime}</b></p>
+                <h3 style="color: #dc3545;">🔒 Tài Khoản Bị Khóa</h3><p>Tài khoản của bạn đã bị khóa đến ngày: <br><b style="font-size: 18px;">${lockTime}</b></p>
                 <button onclick="history.back()" class="main-btn" style="width: auto; padding: 10px 20px;">⬅ Quay Lại</button>
             </div>
         `));
@@ -279,7 +381,7 @@ app.post('/api/login', async (req, res) => {
 app.get('/logout', (req, res) => { res.clearCookie('username'); res.redirect('/'); });
 
 // ==========================================
-// 4. TRANG CHỦ & KHO PHỤ ĐỀ
+// 4. TRANG CHỦ & KHO PHỤ ĐỀ (GỘP NHÓM)
 // ==========================================
 app.get('/', (req, res) => res.redirect('/dashboard'));
 
@@ -319,11 +421,9 @@ app.get('/dashboard', async (req, res) => {
     } else {
         const sortedGroupNames = Object.keys(groupedSubs).sort((a, b) => a.localeCompare(b));
         let groupIndex = 0;
-        
         for (const baseName of sortedGroupNames) {
             const group = groupedSubs[baseName];
             group.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-            
             dbHtml += `
                 <div class="sub-group">
                     <h4 class="sub-group-title" onclick="toggleGroup(${groupIndex})">
@@ -331,7 +431,6 @@ app.get('/dashboard', async (req, res) => {
                         <span id="icon-${groupIndex}">▼</span>
                     </h4>
                     <ul class="db-list" id="group-${groupIndex}">`;
-            
             group.forEach(sub => {
                 const posterUrl = sub.poster || 'https://placehold.co/60x90/2c3e50/FFF?text=No+Poster';
                 dbHtml += `
@@ -371,18 +470,12 @@ app.get('/dashboard', async (req, res) => {
         usersSnap.forEach(u => {
             const ud = u.data();
             let statusHtml = '<span style="color:green">Hoạt động</span>';
-            if (ud.bannedUntil && new Date(ud.bannedUntil) > new Date()) {
-                statusHtml = `<span style="color:red">Bị khóa đến ${new Date(ud.bannedUntil).toLocaleDateString('vi-VN')}</span>`;
-            }
-
+            if (ud.bannedUntil && new Date(ud.bannedUntil) > new Date()) statusHtml = `<span style="color:red">Bị khóa đến ${new Date(ud.bannedUntil).toLocaleDateString('vi-VN')}</span>`;
             adminHtml += `<tr>
                 <td><b>${u.id}</b></td>
                 <td>${ud.role === 'admin' ? '👑 Admin' : '👤 User'}</td>
                 <td>${statusHtml}</td>
-                <td>${u.id !== username ? `
-                    <button onclick="actionUser('${u.id}', 'lock')" class="btn-edit">Khóa</button>
-                    <button onclick="actionUser('${u.id}', 'delete')" class="btn-del">Xóa</button>
-                ` : '<i>(Bạn)</i>'}</td>
+                <td>${u.id !== username ? `<button onclick="actionUser('${u.id}', 'lock')" class="btn-edit">Khóa</button><button onclick="actionUser('${u.id}', 'delete')" class="btn-del">Xóa</button>` : '<i>(Bạn)</i>'}</td>
             </tr>`;
         });
         adminHtml += `</table>`;
@@ -517,9 +610,7 @@ app.get('/admin/lock-user/:id', async (req, res) => {
             const banDate = new Date();
             banDate.setDate(banDate.getDate() + days);
             await setDoc(targetRef, { bannedUntil: banDate.toISOString() }, { merge: true });
-        } else {
-            await setDoc(targetRef, { bannedUntil: null }, { merge: true });
-        }
+        } else await setDoc(targetRef, { bannedUntil: null }, { merge: true });
     }
     res.redirect('/dashboard');
 });
@@ -530,7 +621,7 @@ app.get('/api/raw-sub/:id', async (req, res) => {
     res.send(subSnap.data().vttContent);
 });
 
-// Tải file chuẩn tiếng Anh format S/E
+// TẢI FILE CHUẨN IDM (S01_E02)
 app.get('/download/:id', async (req, res) => {
     const { id } = req.params;
     const { mode } = req.query;
@@ -538,14 +629,14 @@ app.get('/download/:id', async (req, res) => {
     if (!subSnap.exists()) return res.send("File không tồn tại.");
     
     const data = subSnap.data();
-    // Đổi tên Mùa/Tập thành chuẩn quốc tế
     const safeName = formatFilename(data.movieName);
     const filename = `${safeName}_${mode === 'vi' ? 'VI' : 'Bilingual'}_CloudAI.vtt`;
     
     let content = data.vttContent;
     if (mode === 'vi') content = content.replace(/^([^\n]+)\n(<font color='#f1c40f'>.*?<\/font>)$/gm, '$2');
 
-    res.setHeader('Content-Type', 'text/vtt; charset=utf-8');
+    // Ép trình duyệt và IDM lưu đúng tên file
+    res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(content);
 });
@@ -560,7 +651,7 @@ app.get('/delete-sub/:id', async (req, res) => {
     res.redirect('/dashboard');
 });
 
-// TÌM KIẾM CÓ BUTTON "HISTORY.BACK()"
+// TÌM KIẾM (Đã gắn thẳng công cụ tìm kiếm vào kết quả, khỏi cần bấm Back)
 app.get('/search', async (req, res) => {
     const username = getLoggedInUser(req);
     if (!username) return res.redirect('/');
@@ -570,17 +661,35 @@ app.get('/search', async (req, res) => {
         ? `https://v3-cinemeta.strem.io/meta/${type}/${query}.json` 
         : `https://v3-cinemeta.strem.io/catalog/${type}/top/search=${encodeURIComponent(query)}.json`;
 
+    // Ô TÌM KIẾM LẠI NGAY TẠI TRANG
+    const searchFormHTML = `
+        <div class="card" style="border-left: 4px solid #007bff; margin-bottom: 20px;">
+            <h3 style="margin-top: 0;">🎬 TÌM KIẾM TIẾP TỤC</h3>
+            <form action="/search" method="GET">
+                <input type="text" name="query" value="${query}" placeholder="Tên phim..." required>
+                <select name="type" onchange="handleTypeChange(this, 'autoSeasonGroup2')">
+                    <option value="movie" ${type==='movie'?'selected':''}>Phim lẻ (Movie)</option>
+                    <option value="series" ${type==='series'?'selected':''}>Phim bộ (Series)</option>
+                </select>
+                <div id="autoSeasonGroup2" class="grid-2" style="display: ${type==='series'?'grid':'none'};">
+                    <input type="number" name="season" value="${season||''}" placeholder="Mùa (VD: 1)" min="1">
+                    <input type="number" name="episode" value="${episode||''}" placeholder="Tập (VD: 2)" min="1">
+                </div>
+                <button type="submit" class="main-btn">🔍 Tìm Kiếm Ngay</button>
+            </form>
+        </div>
+    `;
+
     try {
         const response = await axios.get(searchUrl, axiosConfig);
         const metas = query.startsWith('tt') ? [response.data.meta] : response.data.metas;
         
-        if (!metas || metas.length === 0 || !metas[0]) return res.send(renderHTML(`
+        if (!metas || metas.length === 0 || !metas[0]) return res.send(renderHTML(searchFormHTML + `
             <div class="card" style="text-align: center; border-top: 4px solid #ffc107;">
                 <h3>❌ Không tìm thấy phim</h3>
                 <p>Vui lòng thử lại với từ khóa hoặc mã IMDb khác.</p>
-                <button onclick="history.back()" class="main-btn" style="width: auto; padding: 10px 20px;">⬅ Quay Lại Tìm Kiếm</button>
-            </div>
-        `, username));
+            </div><a href="/dashboard" class="btn-del" style="background:#6c757d; text-decoration:none; padding:10px 20px; display:inline-block;">🏠 Về Trang Chủ</a>
+        `, username, 'user'));
         
         let resultsHTML = `<h3>Kết quả tìm kiếm cho "${query}":</h3>`;
         for (const meta of metas) {
@@ -597,11 +706,18 @@ app.get('/search', async (req, res) => {
             if (subSnap.exists()) {
                 resultsHTML += `<div class="card" style="display:flex; align-items:center;"><img src="${posterImg}" onerror="this.onerror=null; this.src='https://placehold.co/60x90/2c3e50/FFF?text=No+Poster';" style="width:60px;height:90px;object-fit:cover;border-radius:4px;margin-right:15px;"><div style="flex-grow:1;"><b>${displayName}</b><br><span style="color:green;font-size:13px;">⚡ Đã có trong Kho!</span></div><a href="/download/${fullId}?mode=bilingual" class="btn-dl">📥 Tải Song Ngữ</a></div>`;
             } else {
-                resultsHTML += `<div class="card" style="display:flex; align-items:center;"><img src="${posterImg}" onerror="this.onerror=null; this.src='https://placehold.co/60x90/2c3e50/FFF?text=No+Poster';" style="width:60px;height:90px;object-fit:cover;border-radius:4px;margin-right:15px;"><div style="flex-grow:1;"><b>${displayName}</b><br><span style="color:orange;font-size:13px;">☁️ Cần dịch AI</span></div><a href="/trigger-translate?type=${type}&id=${fullId}&name=${encodeURIComponent(displayName)}&poster=${encodeURIComponent(posterImg)}" class="btn-dl" style="background:#007bff;">🚀 Bắt Đầu Dịch</a></div>`;
+                resultsHTML += `<div class="card" style="display:flex; align-items:center;"><img src="${posterImg}" onerror="this.onerror=null; this.src='https://placehold.co/60x90/2c3e50/FFF?text=No+Poster';" style="width:60px;height:90px;object-fit:cover;border-radius:4px;margin-right:15px;"><div style="flex-grow:1;"><b>${displayName}</b><br><span style="color:orange;font-size:13px;">☁️ Cần dịch AI</span></div><button onclick="startTranslation('${type}', '${fullId}', '${encodeURIComponent(displayName)}', '${encodeURIComponent(posterImg)}')" class="btn-dl" style="background:#007bff; width:auto; border:none; padding:10px 15px;">🚀 Bắt Đầu Dịch</button></div>`;
             }
         }
-        res.send(renderHTML(resultsHTML + `<br><button onclick="history.back()" class="main-btn" style="width:auto; padding:10px 20px; display:inline-block;">⬅ Trở Về Tìm Kiếm</button>`, username));
-    } catch (e) { res.send(renderHTML(`<h3>Lỗi: ${e.message}</h3><br><button onclick="history.back()" class="main-btn" style="width:auto; padding:10px 20px;">⬅ Trở Về Tìm Kiếm</button>`, username)); }
+        res.send(renderHTML(searchFormHTML + resultsHTML + `<br><a href="/dashboard" class="btn-del" style="background:#6c757d; text-decoration:none; padding:10px 20px; display:inline-block;">🏠 Về Trang Chủ</a>`, username, 'user'));
+    } catch (e) { res.send(renderHTML(searchFormHTML + `<h3>Lỗi: ${e.message}</h3><br><a href="/dashboard" class="btn-del" style="background:#6c757d; text-decoration:none; padding:10px 20px; display:inline-block;">🏠 Về Trang Chủ</a>`, username, 'user')); }
+});
+
+app.get('/search-manual', async (req, res) => {
+    const username = getLoggedInUser(req);
+    if (!username) return res.redirect('/');
+    // Tương tự, nếu bạn cần thì có thể gom chung search-manual vào chung style trên.
+    res.redirect(`/search?query=${req.query.imdbId}&type=${req.query.type}&season=${req.query.season}&episode=${req.query.episode}`);
 });
 
 app.post('/upload-translate', upload.single('subFile'), async (req, res) => {
@@ -611,87 +727,38 @@ app.post('/upload-translate', upload.single('subFile'), async (req, res) => {
     fs.readFile(req.file.path, 'utf8', async (err, data) => {
         fs.unlinkSync(req.file.path);
         const userSnap = await getDoc(doc(db, "users", username));
-        if (!userSnap.data().geminiKey) return res.send(renderHTML(`
-            <div class="card" style="text-align: center; border-top: 4px solid #dc3545;">
-                <h3 style="color: #dc3545;">❌ Chưa Cấu Hình API Key</h3>
-                <button onclick="history.back()" class="main-btn" style="width: auto; padding: 10px 20px;">⬅ Quay Lại</button>
-            </div>
-        `, username));
+        if (!userSnap.data().geminiKey) return res.send("<script>alert('❌ Lỗi: Chưa cài API Key'); history.back();</script>");
         
-        const taskId = `upload-${Date.now()}`;
-        activeTasks[taskId] = { status: 'Đang nạp file...', progress: 0, movieName: req.body.movieName, movieId: taskId, isCancelled: false };
-        runGeminiTranslation(taskId, 'manual', taskId, req.body.movieName, username, userSnap.data().geminiKey, userSnap.data().geminiModel, data, '');
-        res.redirect(`/status-page?taskId=${taskId}`);
+        const customId = `upload-${Date.now()}`;
+        const taskId = `${customId}-task`;
+        activeTasks[taskId] = { status: 'Đang nạp file...', progress: 0, movieName: req.body.movieName, movieId: customId, isCancelled: false };
+        runGeminiTranslation(taskId, 'manual', customId, req.body.movieName, username, userSnap.data().geminiKey, userSnap.data().geminiModel, data, '');
+        
+        // Trả về thẳng Dashboard và gọi Widget chạy
+        res.send(`<script>localStorage.setItem('activeTaskId', '${taskId}'); window.location.href='/dashboard';</script>`);
     });
 });
 
 // ==========================================
-// 6. TIẾN ĐỘ NỀN & GEMINI API CALL
+// 6. TIẾN ĐỘ NỀN (WIDGET API) & GEMINI
 // ==========================================
 app.get('/api/cancel-task', (req, res) => {
     if (activeTasks[req.query.taskId]) activeTasks[req.query.taskId].isCancelled = true;
     res.json({ success: true });
 });
 
-app.get('/trigger-translate', async (req, res) => {
+app.get('/api/trigger-translate', async (req, res) => {
     const username = getLoggedInUser(req);
+    if (!username) return res.json({ success: false, message: "Hết phiên đăng nhập!" });
+    
     const { type, id, name, poster } = req.query; 
     const userSnap = await getDoc(doc(db, "users", username));
-    if (!userSnap.data().geminiKey) return res.send(renderHTML(`
-        <div class="card" style="text-align: center; border-top: 4px solid #dc3545;">
-            <h3 style="color: #dc3545;">❌ Chưa Cấu Hình API Key</h3>
-            <button onclick="history.back()" class="main-btn" style="width: auto; padding: 10px 20px;">⬅ Quay Lại</button>
-        </div>
-    `, username));
+    if (!userSnap.data().geminiKey) return res.json({ success: false, message: "Chưa cấu hình API Key!" });
     
     const taskId = `${id}-${Date.now()}`;
-    activeTasks[taskId] = { status: 'Đang chuẩn bị...', progress: 0, movieName: name, movieId: id, isCancelled: false };
-    runGeminiTranslation(taskId, type, id, name, username, userSnap.data().geminiKey, userSnap.data().geminiModel, null, poster);
-    res.redirect(`/status-page?taskId=${taskId}`);
-});
-
-app.get('/status-page', (req, res) => {
-    res.send(renderHTML(`
-        <div style="text-align: center; padding: 20px;">
-            <h3 id="movieName">🎬 Đang xử lý...</h3>
-            <div style="background: #eee; border-radius: 20px; height: 25px; margin: 20px 0; overflow: hidden;">
-                <div id="progressBar" style="background: #007bff; height: 100%; width: 0%; transition: 0.5s;"></div>
-            </div>
-            <p id="statusText" style="font-weight: bold; font-size: 18px; color: #d35400;">Khởi tạo...</p>
-            <div id="cancelArea" style="margin-top: 15px;"><button onclick="fetch('/api/cancel-task?taskId=${req.query.taskId}')" class="btn-del">🛑 Hủy Dịch</button></div>
-            <div id="downloadArea" style="margin-top: 30px; display: none;">
-                <a id="dlBi" href="" class="btn-dl" style="font-size: 16px; padding: 10px;">📥 TẢI SONG NGỮ</a>
-                <a id="dlVi" href="" class="btn-dl" style="font-size: 16px; padding: 10px; background:#17a2b8;">📥 TẢI THUẦN VIỆT</a>
-            </div>
-            <br>
-            <button onclick="history.back()" class="main-btn" style="width:auto; margin-top: 20px; padding:10px 20px;">⬅ Trở về Tác vụ trước</button>
-        </div>
-        <script>
-            let isDone = false;
-            async function checkStatus() {
-                if (isDone) return;
-                const res = await fetch('/api/task-status?taskId=${req.query.taskId}');
-                const task = await res.json();
-                if(task) {
-                    document.getElementById('movieName').innerText = "🎬: " + task.movieName;
-                    document.getElementById('statusText').innerText = task.status;
-                    document.getElementById('progressBar').style.width = task.progress + "%";
-                    if(task.isCancelled || task.status.includes('Lỗi')) {
-                        document.getElementById('progressBar').style.background = '#dc3545';
-                        document.getElementById('cancelArea').style.display = 'none'; isDone = true;
-                    } else if(task.status === 'Hoàn thành 🎉') {
-                        document.getElementById('progressBar').style.background = '#28a745';
-                        document.getElementById('downloadArea').style.display = 'block'; 
-                        document.getElementById('cancelArea').style.display = 'none';
-                        document.getElementById('dlBi').href = '/download/' + task.movieId + '?mode=bilingual';
-                        document.getElementById('dlVi').href = '/download/' + task.movieId + '?mode=vi';
-                        isDone = true;
-                    }
-                }
-            }
-            setInterval(checkStatus, 1500); checkStatus();
-        </script>
-    `, getLoggedInUser(req), 'user'));
+    activeTasks[taskId] = { status: 'Đang chuẩn bị...', progress: 0, movieName: decodeURIComponent(name), movieId: id, isCancelled: false };
+    runGeminiTranslation(taskId, type, id, decodeURIComponent(name), username, userSnap.data().geminiKey, userSnap.data().geminiModel, null, decodeURIComponent(poster));
+    res.json({ success: true, taskId });
 });
 
 app.get('/api/task-status', (req, res) => res.json(activeTasks[req.query.taskId] || { status: 'Lỗi', progress: 0 }));
@@ -766,4 +833,4 @@ async function runGeminiTranslation(taskId, type, id, movieName, username, apiKe
     } catch (err) { if (!activeTasks[taskId].isCancelled) updateTask(`❌ Lỗi: ${err.message}`, 0); }
 }
 
-app.listen(PORT, () => { console.log(`🚀 KHO PHỤ ĐỀ AI (V4.0 - LỖI BẢNG GIAO DIỆN & HISTORY.BACK) CHẠY TẠI CỔNG 7000`); });
+app.listen(PORT, () => { console.log(`🚀 KHO PHỤ ĐỀ AI (V5.0 - CHẠY NGẦM & TÊN CHUẨN) CHẠY TẠI CỔNG 7000`); });
