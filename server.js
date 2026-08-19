@@ -35,7 +35,7 @@ const activeTasks = {};
 const getLoggedInUser = (req) => req.cookies.username || null;
 const hashPwd = (pwd) => crypto.createHash('sha256').update(pwd).digest('hex');
 
-// Chuẩn hóa tên file tải về (Mùa 1 Tập 2 -> S1 E2, bỏ dấu)
+// Chuẩn hóa tên file: Mùa 1 Tập 2 -> S1_E2
 const formatFilename = (str) => {
     let s = str.replace(/Mùa\s*(\d+)/gi, 'S$1').replace(/Tập\s*(\d+)/gi, 'E$1');
     s = s.replace(/Season\s*(\d+)/gi, 'S$1').replace(/Episode\s*(\d+)/gi, 'E$1');
@@ -45,7 +45,7 @@ const formatFilename = (str) => {
 const axiosConfig = { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } };
 
 // ==========================================
-// 2. GIAO DIỆN HTML TỔNG (KÈM WIDGET DỊCH NGẦM)
+// 2. GIAO DIỆN HTML TỔNG
 // ==========================================
 const renderHTML = (content, username = null, role = 'guest') => `
     <html>
@@ -76,7 +76,7 @@ const renderHTML = (content, username = null, role = 'guest') => `
             @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
             .card { background: var(--bg); padding: 20px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 20px; }
             
-            /* Giao diện Gộp Nhóm (Accordion) */
+            /* Gộp Nhóm Thư Mục */
             .sub-group { margin-bottom: 10px; background: var(--box-bg); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
             .sub-group-title { background: rgba(0, 123, 255, 0.1); padding: 15px; margin: 0; font-size: 16px; color: #007bff; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: 0.2s;}
             .sub-group-title:hover { background: rgba(0, 123, 255, 0.2); }
@@ -157,11 +157,9 @@ const renderHTML = (content, username = null, role = 'guest') => `
                 document.getElementById('manualSearchGroup').style.display = isManual ? 'block' : 'none';
             }
 
-            // MỚI: TÍNH NĂNG WIDGET DỊCH NGẦM
             function startTranslation(type, id, encodedName, encodedPoster) {
                 const name = decodeURIComponent(encodedName);
-                const poster = decodeURIComponent(encodedPoster);
-                showWidget(name, 0, 'Đang khởi tạo...');
+                showWidget(name, 0, 'Đang khởi tạo hệ thống Smart AI...');
                 fetch(\`/api/trigger-translate?type=\${type}&id=\${id}&name=\${encodedName}&poster=\${encodedPoster}\`)
                     .then(res => res.json())
                     .then(data => {
@@ -229,7 +227,7 @@ const renderHTML = (content, username = null, role = 'guest') => `
             function hideWidget() { document.getElementById('bgTaskWidget').style.display = 'none'; }
             
             async function cancelBgTask() {
-                if(confirm('Bạn có chắc muốn hủy tiến trình dịch đang chạy ngầm?')) {
+                if(confirm('Hủy tiến trình dịch đang chạy ngầm?')) {
                     const taskId = localStorage.getItem('activeTaskId');
                     if(taskId) await fetch('/api/cancel-task?taskId=' + taskId);
                     clearInterval(checkTaskInterval);
@@ -243,14 +241,14 @@ const renderHTML = (content, username = null, role = 'guest') => `
 
             window.onload = () => { 
                 if(localStorage.getItem('darkMode') === 'true') document.body.classList.add('dark'); 
-                pollTaskStatus(); // Tiếp tục hiển thị widget dịch nếu load lại trang
+                pollTaskStatus(); 
             }
         </script>
     </head>
     <body>
         <div class="container">
             <h2 style="text-align: center; color: #007bff; margin-bottom: 0;">☁️ KHO PHỤ ĐỀ AI ĐÁM MÂY</h2>
-            <p style="text-align: center; font-size: 13px; margin-top: 5px;">Hệ thống Dịch & Quản lý Phụ đề Thông minh</p>
+            <p style="text-align: center; font-size: 13px; margin-top: 5px;">Hệ thống Dịch Đa Luồng (Groq + Gemini)</p>
             
             <div class="user-bar">
                 <span>👋 Xin chào, <b>${username ? username : 'Khách vãng lai'}</b> ${role === 'admin' ? '(👑 Admin)' : (role === 'user' ? '(👤 User)' : '')}</span>
@@ -342,7 +340,9 @@ app.post('/api/register', async (req, res) => {
         passwordHash: hashPwd(password), 
         role: usersSnapshot.empty ? 'admin' : 'user', 
         geminiKey: '', 
-        geminiModel: 'gemini-2.5-flash', 
+        groqKey: '',
+        geminiModel: 'gemini-2.5-flash',
+        translationMode: 'auto', 
         createdAt: new Date().toISOString(),
         bannedUntil: null 
     });
@@ -381,20 +381,19 @@ app.post('/api/login', async (req, res) => {
 app.get('/logout', (req, res) => { res.clearCookie('username'); res.redirect('/'); });
 
 // ==========================================
-// 4. TRANG CHỦ & KHO PHỤ ĐỀ (GỘP NHÓM)
+// 4. TRANG CHỦ & KHO PHỤ ĐỀ 
 // ==========================================
 app.get('/', (req, res) => res.redirect('/dashboard'));
 
 app.get('/dashboard', async (req, res) => {
     const username = getLoggedInUser(req);
-    let role = 'guest', geminiKey = '', currentModel = 'gemini-2.5-flash';
+    let role = 'guest', userData = {};
     
     if (username) {
         const userSnap = await getDoc(doc(db, "users", username));
         if (userSnap.exists()) {
-            role = userSnap.data().role;
-            geminiKey = userSnap.data().geminiKey || '';
-            currentModel = userSnap.data().geminiModel || 'gemini-2.5-flash';
+            userData = userSnap.data();
+            role = userData.role;
         }
     }
 
@@ -492,7 +491,7 @@ app.get('/dashboard', async (req, res) => {
             ${role !== 'guest' ? `
                 <button class="tab-btn" onclick="openTab('tab-search', this)">🔍 Tìm & Dịch Phim</button>
                 <button class="tab-btn" onclick="openTab('tab-upload', this)">📤 Dịch File Thủ Công</button>
-                <button class="tab-btn" onclick="openTab('tab-api', this)">⚙️ Cấu hình API</button>
+                <button class="tab-btn" onclick="openTab('tab-api', this)">⚙️ Cấu hình API Đa Nền Tảng</button>
             ` : ''}
             ${role === 'admin' ? `<button class="tab-btn" onclick="openTab('tab-admin', this)" style="color:#dc3545;">👑 Quản Trị Admin</button>` : ''}
         </div>
@@ -559,15 +558,29 @@ app.get('/dashboard', async (req, res) => {
         </div>
 
         <div id="tab-api" class="tab-pane">
-            <div class="card">
-                <h3 style="margin-top: 0;">🔑 CẤU HÌNH API AI</h3>
-                <form action="/save-key" method="POST">
-                    <select name="geminiModel">
-                        <option value="gemini-2.5-flash" ${currentModel === 'gemini-2.5-flash' ? 'selected' : ''}>Gemini 2.5 Flash</option>
-                        <option value="gemini-1.5-flash" ${currentModel === 'gemini-1.5-flash' ? 'selected' : ''}>Gemini 1.5 Flash</option>
+            <div class="card" style="border-top: 4px solid #17a2b8;">
+                <h3 style="margin-top: 0; color: #17a2b8;">⚙️ CẤU HÌNH ĐIỀU PHỐI AI (AUTO-FALLBACK)</h3>
+                <form action="/save-api" method="POST">
+                    <label style="font-weight: bold; font-size: 14px;">1. Chọn Chế Độ Dịch:</label>
+                    <select name="translationMode">
+                        <option value="auto" ${userData.translationMode === 'auto' ? 'selected' : ''}>⚡ Tự động thông minh (Ưu tiên Groq, nếu lỗi nhảy sang Gemini)</option>
+                        <option value="groq" ${userData.translationMode === 'groq' ? 'selected' : ''}>🚀 Chỉ dùng Groq (Siêu tốc độ - Cần add key)</option>
+                        <option value="gemini" ${userData.translationMode === 'gemini' ? 'selected' : ''}>🧠 Chỉ dùng Gemini (Chất lượng cao)</option>
                     </select>
-                    <input type="text" name="geminiKey" value="${geminiKey}" placeholder="Dán API Key (AIza...)" required>
-                    <button type="submit" class="main-btn">💾 Lưu Cấu Hình</button>
+
+                    <label style="font-weight: bold; font-size: 14px;">2. Groq API Key (Tốc độ):</label>
+                    <input type="text" name="groqKey" value="${userData.groqKey || ''}" placeholder="Nhập Key Groq (gsk_...)">
+                    
+                    <label style="font-weight: bold; font-size: 14px;">3. Google Gemini API Key (Dự phòng/Chất lượng):</label>
+                    <input type="text" name="geminiKey" value="${userData.geminiKey || ''}" placeholder="Nhập Key Gemini (AIza...)">
+                    
+                    <label style="font-weight: bold; font-size: 14px;">Phiên bản Gemini Model:</label>
+                    <select name="geminiModel">
+                        <option value="gemini-2.5-flash" ${userData.geminiModel === 'gemini-2.5-flash' ? 'selected' : ''}>Gemini 2.5 Flash</option>
+                        <option value="gemini-1.5-flash" ${userData.geminiModel === 'gemini-1.5-flash' ? 'selected' : ''}>Gemini 1.5 Flash</option>
+                    </select>
+
+                    <button type="submit" class="main-btn" style="background: #17a2b8; margin-top: 15px;">💾 Lưu Cấu Hình Hệ Thống</button>
                 </form>
             </div>
         </div>
@@ -587,9 +600,14 @@ app.get('/dashboard', async (req, res) => {
 // ==========================================
 // 5. CÁC ROUTE QUẢN TRỊ VÀ API
 // ==========================================
-app.post('/save-key', async (req, res) => {
+app.post('/save-api', async (req, res) => {
     const username = getLoggedInUser(req);
-    if (username) await setDoc(doc(db, "users", username), { geminiKey: req.body.geminiKey, geminiModel: req.body.geminiModel }, { merge: true });
+    if (username) await setDoc(doc(db, "users", username), { 
+        groqKey: req.body.groqKey,
+        geminiKey: req.body.geminiKey, 
+        geminiModel: req.body.geminiModel,
+        translationMode: req.body.translationMode
+    }, { merge: true });
     res.redirect('/dashboard');
 });
 
@@ -635,7 +653,6 @@ app.get('/download/:id', async (req, res) => {
     let content = data.vttContent;
     if (mode === 'vi') content = content.replace(/^([^\n]+)\n(<font color='#f1c40f'>.*?<\/font>)$/gm, '$2');
 
-    // Ép trình duyệt và IDM lưu đúng tên file
     res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(content);
@@ -651,17 +668,13 @@ app.get('/delete-sub/:id', async (req, res) => {
     res.redirect('/dashboard');
 });
 
-// TÌM KIẾM (Đã gắn thẳng công cụ tìm kiếm vào kết quả, khỏi cần bấm Back)
+// TÌM KIẾM CÓ BUTTON BACK
 app.get('/search', async (req, res) => {
     const username = getLoggedInUser(req);
     if (!username) return res.redirect('/');
     const { query, type, season, episode } = req.query;
-    
-    let searchUrl = query.startsWith('tt') 
-        ? `https://v3-cinemeta.strem.io/meta/${type}/${query}.json` 
-        : `https://v3-cinemeta.strem.io/catalog/${type}/top/search=${encodeURIComponent(query)}.json`;
+    let searchUrl = query.startsWith('tt') ? `https://v3-cinemeta.strem.io/meta/${type}/${query}.json` : `https://v3-cinemeta.strem.io/catalog/${type}/top/search=${encodeURIComponent(query)}.json`;
 
-    // Ô TÌM KIẾM LẠI NGAY TẠI TRANG
     const searchFormHTML = `
         <div class="card" style="border-left: 4px solid #007bff; margin-bottom: 20px;">
             <h3 style="margin-top: 0;">🎬 TÌM KIẾM TIẾP TỤC</h3>
@@ -687,8 +700,7 @@ app.get('/search', async (req, res) => {
         if (!metas || metas.length === 0 || !metas[0]) return res.send(renderHTML(searchFormHTML + `
             <div class="card" style="text-align: center; border-top: 4px solid #ffc107;">
                 <h3>❌ Không tìm thấy phim</h3>
-                <p>Vui lòng thử lại với từ khóa hoặc mã IMDb khác.</p>
-            </div><a href="/dashboard" class="btn-del" style="background:#6c757d; text-decoration:none; padding:10px 20px; display:inline-block;">🏠 Về Trang Chủ</a>
+            </div><button onclick="history.back()" class="btn-del" style="background:#6c757d; padding:10px 20px;">⬅ Trở Về</button>
         `, username, 'user'));
         
         let resultsHTML = `<h3>Kết quả tìm kiếm cho "${query}":</h3>`;
@@ -701,23 +713,16 @@ app.get('/search', async (req, res) => {
             }
 
             const posterImg = meta.poster || 'https://placehold.co/60x90/2c3e50/FFF?text=No+Poster';
-
             const subSnap = await getDoc(doc(db, "shared_subs", fullId));
+            
             if (subSnap.exists()) {
                 resultsHTML += `<div class="card" style="display:flex; align-items:center;"><img src="${posterImg}" onerror="this.onerror=null; this.src='https://placehold.co/60x90/2c3e50/FFF?text=No+Poster';" style="width:60px;height:90px;object-fit:cover;border-radius:4px;margin-right:15px;"><div style="flex-grow:1;"><b>${displayName}</b><br><span style="color:green;font-size:13px;">⚡ Đã có trong Kho!</span></div><a href="/download/${fullId}?mode=bilingual" class="btn-dl">📥 Tải Song Ngữ</a></div>`;
             } else {
                 resultsHTML += `<div class="card" style="display:flex; align-items:center;"><img src="${posterImg}" onerror="this.onerror=null; this.src='https://placehold.co/60x90/2c3e50/FFF?text=No+Poster';" style="width:60px;height:90px;object-fit:cover;border-radius:4px;margin-right:15px;"><div style="flex-grow:1;"><b>${displayName}</b><br><span style="color:orange;font-size:13px;">☁️ Cần dịch AI</span></div><button onclick="startTranslation('${type}', '${fullId}', '${encodeURIComponent(displayName)}', '${encodeURIComponent(posterImg)}')" class="btn-dl" style="background:#007bff; width:auto; border:none; padding:10px 15px;">🚀 Bắt Đầu Dịch</button></div>`;
             }
         }
-        res.send(renderHTML(searchFormHTML + resultsHTML + `<br><a href="/dashboard" class="btn-del" style="background:#6c757d; text-decoration:none; padding:10px 20px; display:inline-block;">🏠 Về Trang Chủ</a>`, username, 'user'));
-    } catch (e) { res.send(renderHTML(searchFormHTML + `<h3>Lỗi: ${e.message}</h3><br><a href="/dashboard" class="btn-del" style="background:#6c757d; text-decoration:none; padding:10px 20px; display:inline-block;">🏠 Về Trang Chủ</a>`, username, 'user')); }
-});
-
-app.get('/search-manual', async (req, res) => {
-    const username = getLoggedInUser(req);
-    if (!username) return res.redirect('/');
-    // Tương tự, nếu bạn cần thì có thể gom chung search-manual vào chung style trên.
-    res.redirect(`/search?query=${req.query.imdbId}&type=${req.query.type}&season=${req.query.season}&episode=${req.query.episode}`);
+        res.send(renderHTML(searchFormHTML + resultsHTML + `<br><button onclick="history.back()" class="btn-del" style="background:#6c757d; padding:10px 20px;">⬅ Trở Về</button>`, username, 'user'));
+    } catch (e) { res.send(renderHTML(searchFormHTML + `<h3>Lỗi: ${e.message}</h3><br><button onclick="history.back()" class="btn-del" style="background:#6c757d; padding:10px 20px;">⬅ Trở Về</button>`, username, 'user')); }
 });
 
 app.post('/upload-translate', upload.single('subFile'), async (req, res) => {
@@ -727,20 +732,19 @@ app.post('/upload-translate', upload.single('subFile'), async (req, res) => {
     fs.readFile(req.file.path, 'utf8', async (err, data) => {
         fs.unlinkSync(req.file.path);
         const userSnap = await getDoc(doc(db, "users", username));
-        if (!userSnap.data().geminiKey) return res.send("<script>alert('❌ Lỗi: Chưa cài API Key'); history.back();</script>");
+        if (!userSnap.data().geminiKey && !userSnap.data().groqKey) return res.send("<script>alert('❌ Lỗi: Bạn chưa cài đặt bất kỳ API Key nào!'); history.back();</script>");
         
         const customId = `upload-${Date.now()}`;
         const taskId = `${customId}-task`;
         activeTasks[taskId] = { status: 'Đang nạp file...', progress: 0, movieName: req.body.movieName, movieId: customId, isCancelled: false };
-        runGeminiTranslation(taskId, 'manual', customId, req.body.movieName, username, userSnap.data().geminiKey, userSnap.data().geminiModel, data, '');
+        runSmartTranslation(taskId, 'manual', customId, req.body.movieName, username, userSnap.data(), data, '');
         
-        // Trả về thẳng Dashboard và gọi Widget chạy
         res.send(`<script>localStorage.setItem('activeTaskId', '${taskId}'); window.location.href='/dashboard';</script>`);
     });
 });
 
 // ==========================================
-// 6. TIẾN ĐỘ NỀN (WIDGET API) & GEMINI
+// 6. TIẾN ĐỘ NỀN & SMART MULTI-PROVIDER ENGINE
 // ==========================================
 app.get('/api/cancel-task', (req, res) => {
     if (activeTasks[req.query.taskId]) activeTasks[req.query.taskId].isCancelled = true;
@@ -753,23 +757,48 @@ app.get('/api/trigger-translate', async (req, res) => {
     
     const { type, id, name, poster } = req.query; 
     const userSnap = await getDoc(doc(db, "users", username));
-    if (!userSnap.data().geminiKey) return res.json({ success: false, message: "Chưa cấu hình API Key!" });
+    const uData = userSnap.data();
+
+    if (!uData.geminiKey && !uData.groqKey) return res.json({ success: false, message: "Bạn chưa cài đặt API Key nào. Vui lòng vào Cấu hình API!" });
     
     const taskId = `${id}-${Date.now()}`;
     activeTasks[taskId] = { status: 'Đang chuẩn bị...', progress: 0, movieName: decodeURIComponent(name), movieId: id, isCancelled: false };
-    runGeminiTranslation(taskId, type, id, decodeURIComponent(name), username, userSnap.data().geminiKey, userSnap.data().geminiModel, null, decodeURIComponent(poster));
+    
+    runSmartTranslation(taskId, type, id, decodeURIComponent(name), username, uData, null, decodeURIComponent(poster));
     res.json({ success: true, taskId });
 });
 
 app.get('/api/task-status', (req, res) => res.json(activeTasks[req.query.taskId] || { status: 'Lỗi', progress: 0 }));
 
-async function runGeminiTranslation(taskId, type, id, movieName, username, apiKey, modelName, rawSubData = null, posterUrl = '') {
+// Hàm dịch phụ trợ Groq
+async function translateWithGroq(chunkObj, groqKey) {
+    const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "system", content: "Bạn là biên dịch viên phim chuyên nghiệp. Dịch mảng JSON sang tiếng Việt. CHỈ TRẢ VỀ JSON HỢP LỆ." },
+                   { role: "user", content: `Dữ liệu:\n${JSON.stringify(chunkObj)}` }]
+    }, { headers: { 'Authorization': `Bearer ${groqKey}`, 'Content-Type': 'application/json' }});
+    
+    let text = response.data.choices[0].message.content.replace(/```json/g, '').replace(/```/g, '').trim();
+    return JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
+}
+
+// Hàm dịch phụ trợ Gemini
+async function translateWithGemini(chunkObj, geminiKey, geminiModel) {
+    const response = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`, { 
+        contents: [{ parts: [{ text: `Dịch mảng JSON sau sang tiếng Việt đời thường. TRẢ VỀ ĐÚNG CẤU TRÚC JSON.\n${JSON.stringify(chunkObj)}` }] }] 
+    });
+    let text = response.data.candidates[0].content.parts[0].text.replace(/```json/g, '').replace(/```/g, '').trim();
+    return JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
+}
+
+// Hàm điều phối chính (Multi-Provider Engine)
+async function runSmartTranslation(taskId, type, id, movieName, username, uData, rawSubData = null, posterUrl = '') {
     const updateTask = (status, progress) => { if (activeTasks[taskId] && !activeTasks[taskId].isCancelled) { activeTasks[taskId].status = status; activeTasks[taskId].progress = progress; } };
     try {
         let subContent = "";
-        if (rawSubData) { updateTask('Phân tích file...', 5); subContent = rawSubData; } 
+        if (rawSubData) { updateTask('Đang phân tích file...', 5); subContent = rawSubData; } 
         else {
-            updateTask('Tải sub gốc...', 5);
+            updateTask('Đang tải sub gốc...', 5);
             const osResponse = await axios.get(`https://opensubtitles-v3.strem.io/subtitles/${type}/${id}.json`, axiosConfig);
             const engSubs = (osResponse.data.subtitles || []).filter(sub => sub.lang === 'eng' || sub.lang === 'en');
             if (engSubs.length === 0) return updateTask('❌ Lỗi: Chưa có sub Tiếng Anh.', 0);
@@ -786,32 +815,53 @@ async function runGeminiTranslation(taskId, type, id, movieName, username, apiKe
         });
 
         const chunkSize = 100, translatedTexts = [];
+        const mode = uData.translationMode || 'auto';
+        
         for (let i = 0; i < originalTexts.length; i += chunkSize) {
             if (activeTasks[taskId].isCancelled) return; 
             const chunk = originalTexts.slice(i, i + chunkSize);
             let chunkObj = {}; chunk.forEach((text, idx) => chunkObj[idx] = text);
+            
             let success = false, retries = 0;
+            // Thuật toán: Nếu auto, ưu tiên check Groq có tồn tại không, không có thì xài Gemini.
+            let currentProvider = (mode === 'auto' || mode === 'groq') && uData.groqKey ? 'groq' : 'gemini';
+            let curProgress = Math.floor(10 + (i / originalTexts.length) * 80);
 
             while (!success && retries < 3) {
                 if (activeTasks[taskId].isCancelled) return;
                 try {
-                    const aiResponse = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`, { contents: [{ parts: [{ text: `Dịch mảng JSON sau sang tiếng Việt đời thường. TRẢ VỀ ĐÚNG CẤU TRÚC JSON.\n${JSON.stringify(chunkObj)}` }] }] });
-                    let transRes = aiResponse.data.candidates[0].content.parts[0].text.replace(/```json/g, '').replace(/```/g, '').trim();
-                    const parsedData = JSON.parse(transRes.match(/\{[\s\S]*\}/)[0]);
+                    let parsedData;
+                    if (currentProvider === 'groq') {
+                        updateTask(`Đang xử lý ${Math.min(i + chunkSize, originalTexts.length)}/${originalTexts.length} (⚡ Bằng Groq)...`, curProgress);
+                        parsedData = await translateWithGroq(chunkObj, uData.groqKey);
+                    } else {
+                        updateTask(`Đang xử lý ${Math.min(i + chunkSize, originalTexts.length)}/${originalTexts.length} (🧠 Bằng Gemini)...`, curProgress);
+                        parsedData = await translateWithGemini(chunkObj, uData.geminiKey, uData.geminiModel);
+                    }
+                    
                     for (let j = 0; j < chunk.length; j++) translatedTexts.push(parsedData[j] || chunk[j]);
                     success = true;
+
                 } catch (err) {
+                    // CƠ CHẾ AUTO-FALLBACK: Groq bị lỗi/quá tải -> Chuyển ngay sang Gemini
+                    if (mode === 'auto' && currentProvider === 'groq' && uData.geminiKey) {
+                        currentProvider = 'gemini';
+                        updateTask(`⚡ Groq quá tải. Tự động chuyển sang Gemini...`, curProgress);
+                        continue; // Bỏ qua lượt đếm lỗi, thử lại ngay lập tức với Gemini
+                    }
+                    
                     retries++;
-                    if (retries >= 3) translatedTexts.push(...chunk);
-                    else {
-                        const waitTime = (parseFloat((err.message || '').match(/retry in (\d+(\.\d+)?)s/)?.[1] || 23) + 2) * 1000; 
-                        updateTask(`API quá tải. Đợi ${Math.ceil(waitTime/1000)}s...`, Math.floor(10 + (i / originalTexts.length) * 80));
+                    if (retries >= 3) {
+                        translatedTexts.push(...chunk); // Thất bại toàn tập -> Trả về tiếng Anh đoạn đó
+                    } else {
+                        const waitTime = currentProvider === 'groq' ? 3000 : 20000; // Groq nghỉ 3s, Gemini nghỉ 20s
+                        updateTask(`API quá tải. Đợi ${waitTime/1000}s thử lại...`, curProgress);
                         await new Promise(r => setTimeout(r, waitTime));
                     }
                 }
             }
-            updateTask(`Đang xử lý ${Math.min(i + chunkSize, originalTexts.length)}/${originalTexts.length}...`, Math.floor(10 + (i / originalTexts.length) * 80));
-            await new Promise(r => setTimeout(r, 6000)); 
+            if (currentProvider === 'gemini') await new Promise(r => setTimeout(r, 6000)); // Gemini cần delay giữa các nhịp
+            else await new Promise(r => setTimeout(r, 1000)); // Groq siêu nhanh, chỉ cần nghỉ 1s
         }
 
         if (activeTasks[taskId].isCancelled) return;
@@ -833,4 +883,4 @@ async function runGeminiTranslation(taskId, type, id, movieName, username, apiKe
     } catch (err) { if (!activeTasks[taskId].isCancelled) updateTask(`❌ Lỗi: ${err.message}`, 0); }
 }
 
-app.listen(PORT, () => { console.log(`🚀 KHO PHỤ ĐỀ AI (V5.0 - CHẠY NGẦM & TÊN CHUẨN) CHẠY TẠI CỔNG 7000`); });
+app.listen(PORT, () => { console.log(`🚀 KHO PHỤ ĐỀ AI (V6.0 SMART MULTI-PROVIDER) CHẠY TẠI CỔNG 7000`); });
