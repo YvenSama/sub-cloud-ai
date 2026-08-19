@@ -30,12 +30,15 @@ const firebaseConfig = {
 
 const firebaseApp = initializeApp(firebaseConfig);
 const db = getFirestore(firebaseApp);
+
+// HỆ THỐNG HÀNG CHỜ TOÀN CỤC
 const activeTasks = {}; 
+const translationQueue = [];
+let isProcessingQueue = false;
 
 const getLoggedInUser = (req) => req.cookies.username || null;
 const hashPwd = (pwd) => crypto.createHash('sha256').update(pwd).digest('hex');
 
-// Chuẩn hóa tên file: Mùa 1 Tập 2 -> S1_E2
 const formatFilename = (str) => {
     let s = str.replace(/Mùa\s*(\d+)/gi, 'S$1').replace(/Tập\s*(\d+)/gi, 'E$1');
     s = s.replace(/Season\s*(\d+)/gi, 'S$1').replace(/Episode\s*(\d+)/gi, 'E$1');
@@ -45,7 +48,7 @@ const formatFilename = (str) => {
 const axiosConfig = { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } };
 
 // ==========================================
-// 2. GIAO DIỆN HTML TỔNG
+// 2. GIAO DIỆN HTML TỔNG (WIDGET ĐỒNG BỘ SERVER)
 // ==========================================
 const renderHTML = (content, username = null, role = 'guest') => `
     <html>
@@ -76,7 +79,6 @@ const renderHTML = (content, username = null, role = 'guest') => `
             @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
             .card { background: var(--bg); padding: 20px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 20px; }
             
-            /* Gộp Nhóm Thư Mục */
             .sub-group { margin-bottom: 10px; background: var(--box-bg); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
             .sub-group-title { background: rgba(0, 123, 255, 0.1); padding: 15px; margin: 0; font-size: 16px; color: #007bff; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: 0.2s;}
             .sub-group-title:hover { background: rgba(0, 123, 255, 0.2); }
@@ -90,14 +92,12 @@ const renderHTML = (content, username = null, role = 'guest') => `
             th, td { border: 1px solid var(--border); padding: 10px; text-align: left; }
             th { background: rgba(0,0,0,0.05); }
 
-            /* Modal Xem Trước */
             .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); backdrop-filter: blur(3px); }
             .modal-content { background: var(--box-bg); margin: 5% auto; padding: 20px; border: 1px solid var(--border); width: 80%; max-width: 700px; border-radius: 10px; max-height: 80vh; display: flex; flex-direction: column; }
             .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
             .close-btn { background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-weight: bold; }
             pre#subPreviewText { background: var(--bg); color: var(--text); padding: 15px; border-radius: 5px; overflow-y: auto; flex-grow: 1; font-family: monospace; font-size: 14px; white-space: pre-wrap; word-wrap: break-word; }
 
-            /* Toggle Switch */
             .toggle-switch { display: inline-flex; align-items: center; cursor: pointer; margin-bottom: 15px; }
             .toggle-switch input { display: none; }
             .toggle-slider { width: 40px; height: 20px; background-color: #ccc; border-radius: 20px; position: relative; transition: 0.3s; margin-right: 10px; }
@@ -105,7 +105,6 @@ const renderHTML = (content, username = null, role = 'guest') => `
             .toggle-switch input:checked + .toggle-slider { background-color: #007bff; }
             .toggle-switch input:checked + .toggle-slider:before { transform: translateX(20px); }
             
-            /* WIDGET DỊCH NGẦM */
             #bgTaskWidget { display: none; position: fixed; bottom: 20px; left: 20px; width: 320px; background: var(--box-bg); border: 2px solid #007bff; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); padding: 15px; z-index: 10000; transition: 0.3s; }
         </style>
         <script>
@@ -157,81 +156,89 @@ const renderHTML = (content, username = null, role = 'guest') => `
                 document.getElementById('manualSearchGroup').style.display = isManual ? 'block' : 'none';
             }
 
-            function startTranslation(type, id, encodedName, encodedPoster) {
-                const name = decodeURIComponent(encodedName);
-                showWidget(name, 0, 'Đang khởi tạo hệ thống Smart AI...');
+            // HỆ THỐNG XẾP HÀNG (QUEUE) MỚI TỪ PHÍA CLIENT
+            function startTranslation(type, id, encodedName, encodedPoster, btnElement) {
+                if (btnElement) {
+                    btnElement.innerText = '⏳ Đã thêm vào hàng chờ';
+                    btnElement.style.background = '#6c757d';
+                    btnElement.disabled = true;
+                }
+                
                 fetch(\`/api/trigger-translate?type=\${type}&id=\${id}&name=\${encodedName}&poster=\${encodedPoster}\`)
                     .then(res => res.json())
                     .then(data => {
-                        if (data.success) {
-                            localStorage.setItem('activeTaskId', data.taskId);
-                            pollTaskStatus();
-                        } else {
+                        if (!data.success) {
                             alert('Lỗi: ' + data.message);
-                            hideWidget();
+                            if (btnElement) {
+                                btnElement.innerText = '🚀 Bắt Đầu Dịch Lại';
+                                btnElement.style.background = '#007bff';
+                                btnElement.disabled = false;
+                            }
+                        } else {
+                            pollTaskStatus();
                         }
                     });
             }
 
+            // ĐỒNG BỘ WIDGET TOÀN CỤC VỚI SERVER
             function pollTaskStatus() {
-                const taskId = localStorage.getItem('activeTaskId');
-                if (!taskId) return;
-                
                 document.getElementById('bgTaskWidget').style.display = 'block';
                 if(checkTaskInterval) clearInterval(checkTaskInterval);
                 
                 checkTaskInterval = setInterval(async () => {
                     try {
-                        const res = await fetch('/api/task-status?taskId=' + taskId);
-                        const task = await res.json();
-                        if(task && task.status !== 'Lỗi') {
-                            document.getElementById('bgTaskName').innerText = task.movieName;
+                        const res = await fetch('/api/my-status');
+                        const data = await res.json();
+                        
+                        if (data.current) {
+                            const task = data.current;
+                            let title = task.movieName;
+                            if (data.waitingCount > 0) title += \` (+\${data.waitingCount} phim đang chờ)\`;
+                            
+                            document.getElementById('bgTaskName').innerText = title;
                             document.getElementById('bgTaskStatus').innerText = task.status;
                             document.getElementById('bgTaskBar').style.width = task.progress + '%';
                             
-                            if(task.isCancelled || task.status.includes('Lỗi') || task.status === 'Hoàn thành 🎉') {
-                                clearInterval(checkTaskInterval);
-                                if(task.status === 'Hoàn thành 🎉') {
-                                    document.getElementById('bgTaskCancel').style.display = 'none';
-                                    document.getElementById('bgTaskDownload').style.display = 'block';
-                                    document.getElementById('bgTaskDlBi').href = '/download/' + task.movieId + '?mode=bilingual';
-                                    document.getElementById('bgTaskDlVi').href = '/download/' + task.movieId + '?mode=vi';
-                                    if(window.location.pathname.includes('/dashboard')) setTimeout(() => window.location.reload(), 5000);
-                                } else {
-                                    document.getElementById('bgTaskBar').style.background = '#dc3545';
-                                    document.getElementById('bgTaskStatus').style.color = '#dc3545';
-                                    document.getElementById('bgTaskCancel').style.display = 'none';
-                                }
-                                localStorage.removeItem('activeTaskId');
+                            if (task.status.includes('Hoàn thành')) {
+                                document.getElementById('bgTaskBar').style.background = '#28a745';
+                                document.getElementById('bgTaskStatus').style.color = '#28a745';
+                                document.getElementById('bgTaskCancel').style.display = 'none';
+                                document.getElementById('bgTaskDownload').style.display = 'block';
+                                document.getElementById('bgTaskDlBi').href = '/download/' + task.movieId + '?mode=bilingual';
+                                document.getElementById('bgTaskDlVi').href = '/download/' + task.movieId + '?mode=vi';
+                                document.getElementById('bgTaskClose').onclick = () => dismissTask(task.taskId);
+                            } else if (task.status.includes('Lỗi')) {
+                                document.getElementById('bgTaskBar').style.background = '#dc3545';
+                                document.getElementById('bgTaskStatus').style.color = '#dc3545';
+                                document.getElementById('bgTaskCancel').style.display = 'none';
+                                document.getElementById('bgTaskDownload').style.display = 'none';
+                                document.getElementById('bgTaskClose').onclick = () => dismissTask(task.taskId);
+                            } else {
+                                document.getElementById('bgTaskBar').style.background = '#007bff';
+                                document.getElementById('bgTaskStatus').style.color = '#d35400';
+                                document.getElementById('bgTaskCancel').style.display = 'block';
+                                document.getElementById('bgTaskDownload').style.display = 'none';
+                                document.getElementById('bgTaskCancel').onclick = () => cancelBgTask(task.taskId);
+                                document.getElementById('bgTaskClose').onclick = () => hideWidget();
                             }
                         } else {
-                            clearInterval(checkTaskInterval);
-                            localStorage.removeItem('activeTaskId');
-                            hideWidget();
+                            document.getElementById('bgTaskWidget').style.display = 'none';
                         }
                     } catch(e) {}
                 }, 1500);
             }
 
-            function showWidget(name, progress, status) {
-                document.getElementById('bgTaskWidget').style.display = 'block';
-                document.getElementById('bgTaskName').innerText = name;
-                document.getElementById('bgTaskStatus').innerText = status;
-                document.getElementById('bgTaskStatus').style.color = '#d35400';
-                document.getElementById('bgTaskBar').style.width = progress + '%';
-                document.getElementById('bgTaskBar').style.background = '#28a745';
-                document.getElementById('bgTaskCancel').style.display = 'block';
-                document.getElementById('bgTaskDownload').style.display = 'none';
+            async function dismissTask(taskId) {
+                await fetch('/api/dismiss-task?taskId=' + taskId);
+                document.getElementById('bgTaskWidget').style.display = 'none';
+                if (window.location.pathname.includes('/dashboard')) window.location.reload();
             }
 
             function hideWidget() { document.getElementById('bgTaskWidget').style.display = 'none'; }
             
-            async function cancelBgTask() {
-                if(confirm('Hủy tiến trình dịch đang chạy ngầm?')) {
-                    const taskId = localStorage.getItem('activeTaskId');
-                    if(taskId) await fetch('/api/cancel-task?taskId=' + taskId);
-                    clearInterval(checkTaskInterval);
-                    localStorage.removeItem('activeTaskId');
+            async function cancelBgTask(taskId) {
+                if(confirm('Hủy tiến trình dịch của phim này?')) {
+                    await fetch('/api/cancel-task?taskId=' + taskId);
                     document.getElementById('bgTaskStatus').innerText = '❌ Đã hủy';
                     document.getElementById('bgTaskStatus').style.color = '#dc3545';
                     document.getElementById('bgTaskBar').style.background = '#dc3545';
@@ -241,7 +248,7 @@ const renderHTML = (content, username = null, role = 'guest') => `
 
             window.onload = () => { 
                 if(localStorage.getItem('darkMode') === 'true') document.body.classList.add('dark'); 
-                pollTaskStatus(); 
+                pollTaskStatus(); // WIDGET TỰ ĐỘNG HIỆN LẠI NẾU F5 TRANG
             }
         </script>
     </head>
@@ -259,10 +266,8 @@ const renderHTML = (content, username = null, role = 'guest') => `
             ${content}
         </div>
 
-        <!-- Herta Kuru Kuru GIF -->
         <img src="https://media.tenor.com/FwO53Zl9Cq0AAAAi/herta-kuru-kuru-kururin.gif" style="position: fixed; bottom: 10px; right: 10px; width: 120px; z-index: 9999; pointer-events: none;">
 
-        <!-- MODAL XEM TRƯỚC -->
         <div id="subModal" class="modal">
             <div class="modal-content">
                 <div class="modal-header">
@@ -273,18 +278,18 @@ const renderHTML = (content, username = null, role = 'guest') => `
             </div>
         </div>
 
-        <!-- WIDGET DỊCH NGẦM -->
+        <!-- WIDGET DỊCH NGẦM ĐƯỢC LÀM MỚI -->
         <div id="bgTaskWidget">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                 <b id="bgTaskName" style="font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 250px; color: #007bff;">Đang tải...</b>
-                <button onclick="hideWidget()" style="background: none; border: none; font-size: 16px; cursor: pointer; color: var(--text); padding: 0;">✖</button>
+                <button id="bgTaskClose" onclick="hideWidget()" style="background: none; border: none; font-size: 16px; cursor: pointer; color: var(--text); padding: 0;">✖</button>
             </div>
             <div style="background: var(--bg); border-radius: 10px; height: 8px; width: 100%; margin-bottom: 10px; overflow: hidden;">
                 <div id="bgTaskBar" style="background: #28a745; height: 100%; width: 0%; transition: 0.5s;"></div>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span id="bgTaskStatus" style="font-size: 12px; font-weight: bold; color: #d35400;">Khởi tạo...</span>
-                <button id="bgTaskCancel" onclick="cancelBgTask()" class="btn-del" style="padding: 4px 8px; font-size: 11px;">🛑 Hủy</button>
+                <span id="bgTaskStatus" style="font-size: 12px; font-weight: bold; color: #d35400;">Đang kết nối...</span>
+                <button id="bgTaskCancel" class="btn-del" style="padding: 4px 8px; font-size: 11px;">🛑 Hủy</button>
             </div>
             <div id="bgTaskDownload" style="display: none; margin-top: 10px; text-align: center;">
                 <a id="bgTaskDlBi" href="#" class="btn-dl" style="font-size: 11px; padding: 6px 10px;">📥 Song Ngữ</a>
@@ -339,12 +344,8 @@ app.post('/api/register', async (req, res) => {
     await setDoc(userRef, { 
         passwordHash: hashPwd(password), 
         role: usersSnapshot.empty ? 'admin' : 'user', 
-        geminiKey: '', 
-        groqKey: '',
-        geminiModel: 'gemini-2.5-flash',
-        translationMode: 'auto', 
-        createdAt: new Date().toISOString(),
-        bannedUntil: null 
+        geminiKey: '', groqKey: '', geminiModel: 'gemini-2.5-flash', translationMode: 'auto', 
+        createdAt: new Date().toISOString(), bannedUntil: null 
     });
     res.cookie('username', username, { maxAge: 30 * 24 * 60 * 60 * 1000 });
     res.redirect('/dashboard');
@@ -392,14 +393,12 @@ app.get('/dashboard', async (req, res) => {
     if (username) {
         const userSnap = await getDoc(doc(db, "users", username));
         if (userSnap.exists()) {
-            userData = userSnap.data();
-            role = userData.role;
+            userData = userSnap.data(); role = userData.role;
         }
     }
 
     const subsSnapshot = await getDocs(collection(db, "shared_subs"));
-    const allSubs = [];
-    const leaderBoardData = {};
+    const allSubs = []; const leaderBoardData = {};
 
     subsSnapshot.forEach(docSnap => {
         const data = docSnap.data();
@@ -567,19 +566,15 @@ app.get('/dashboard', async (req, res) => {
                         <option value="groq" ${userData.translationMode === 'groq' ? 'selected' : ''}>🚀 Chỉ dùng Groq (Siêu tốc độ - Cần add key)</option>
                         <option value="gemini" ${userData.translationMode === 'gemini' ? 'selected' : ''}>🧠 Chỉ dùng Gemini (Chất lượng cao)</option>
                     </select>
-
                     <label style="font-weight: bold; font-size: 14px;">2. Groq API Key (Tốc độ):</label>
                     <input type="text" name="groqKey" value="${userData.groqKey || ''}" placeholder="Nhập Key Groq (gsk_...)">
-                    
                     <label style="font-weight: bold; font-size: 14px;">3. Google Gemini API Key (Dự phòng/Chất lượng):</label>
                     <input type="text" name="geminiKey" value="${userData.geminiKey || ''}" placeholder="Nhập Key Gemini (AIza...)">
-                    
                     <label style="font-weight: bold; font-size: 14px;">Phiên bản Gemini Model:</label>
                     <select name="geminiModel">
                         <option value="gemini-2.5-flash" ${userData.geminiModel === 'gemini-2.5-flash' ? 'selected' : ''}>Gemini 2.5 Flash</option>
                         <option value="gemini-1.5-flash" ${userData.geminiModel === 'gemini-1.5-flash' ? 'selected' : ''}>Gemini 1.5 Flash</option>
                     </select>
-
                     <button type="submit" class="main-btn" style="background: #17a2b8; margin-top: 15px;">💾 Lưu Cấu Hình Hệ Thống</button>
                 </form>
             </div>
@@ -598,15 +593,13 @@ app.get('/dashboard', async (req, res) => {
 });
 
 // ==========================================
-// 5. CÁC ROUTE QUẢN TRỊ VÀ API
+// 5. CÁC ROUTE API CƠ BẢN
 // ==========================================
 app.post('/save-api', async (req, res) => {
     const username = getLoggedInUser(req);
     if (username) await setDoc(doc(db, "users", username), { 
-        groqKey: req.body.groqKey,
-        geminiKey: req.body.geminiKey, 
-        geminiModel: req.body.geminiModel,
-        translationMode: req.body.translationMode
+        groqKey: req.body.groqKey, geminiKey: req.body.geminiKey, 
+        geminiModel: req.body.geminiModel, translationMode: req.body.translationMode
     }, { merge: true });
     res.redirect('/dashboard');
 });
@@ -625,8 +618,7 @@ app.get('/admin/lock-user/:id', async (req, res) => {
         const days = parseInt(req.query.days);
         const targetRef = doc(db, "users", req.params.id);
         if (days > 0) {
-            const banDate = new Date();
-            banDate.setDate(banDate.getDate() + days);
+            const banDate = new Date(); banDate.setDate(banDate.getDate() + days);
             await setDoc(targetRef, { bannedUntil: banDate.toISOString() }, { merge: true });
         } else await setDoc(targetRef, { bannedUntil: null }, { merge: true });
     }
@@ -639,13 +631,10 @@ app.get('/api/raw-sub/:id', async (req, res) => {
     res.send(subSnap.data().vttContent);
 });
 
-// TẢI FILE CHUẨN IDM (S01_E02)
 app.get('/download/:id', async (req, res) => {
-    const { id } = req.params;
-    const { mode } = req.query;
+    const { id } = req.params; const { mode } = req.query;
     const subSnap = await getDoc(doc(db, "shared_subs", id));
     if (!subSnap.exists()) return res.send("File không tồn tại.");
-    
     const data = subSnap.data();
     const safeName = formatFilename(data.movieName);
     const filename = `${safeName}_${mode === 'vi' ? 'VI' : 'Bilingual'}_CloudAI.vtt`;
@@ -711,14 +700,14 @@ app.get('/search', async (req, res) => {
                 fullId = `${fullId}:${season}:${episode}`;
                 displayName = `${meta.name} (Mùa ${season} Tập ${episode})`;
             }
-
             const posterImg = meta.poster || 'https://placehold.co/60x90/2c3e50/FFF?text=No+Poster';
             const subSnap = await getDoc(doc(db, "shared_subs", fullId));
             
             if (subSnap.exists()) {
                 resultsHTML += `<div class="card" style="display:flex; align-items:center;"><img src="${posterImg}" onerror="this.onerror=null; this.src='https://placehold.co/60x90/2c3e50/FFF?text=No+Poster';" style="width:60px;height:90px;object-fit:cover;border-radius:4px;margin-right:15px;"><div style="flex-grow:1;"><b>${displayName}</b><br><span style="color:green;font-size:13px;">⚡ Đã có trong Kho!</span></div><a href="/download/${fullId}?mode=bilingual" class="btn-dl">📥 Tải Song Ngữ</a></div>`;
             } else {
-                resultsHTML += `<div class="card" style="display:flex; align-items:center;"><img src="${posterImg}" onerror="this.onerror=null; this.src='https://placehold.co/60x90/2c3e50/FFF?text=No+Poster';" style="width:60px;height:90px;object-fit:cover;border-radius:4px;margin-right:15px;"><div style="flex-grow:1;"><b>${displayName}</b><br><span style="color:orange;font-size:13px;">☁️ Cần dịch AI</span></div><button onclick="startTranslation('${type}', '${fullId}', '${encodeURIComponent(displayName)}', '${encodeURIComponent(posterImg)}')" class="btn-dl" style="background:#007bff; width:auto; border:none; padding:10px 15px;">🚀 Bắt Đầu Dịch</button></div>`;
+                // CHÚ Ý: Bổ sung "this" vào hàm gọi để giao diện đổi nút thành "Đã vào hàng chờ"
+                resultsHTML += `<div class="card" style="display:flex; align-items:center;"><img src="${posterImg}" onerror="this.onerror=null; this.src='https://placehold.co/60x90/2c3e50/FFF?text=No+Poster';" style="width:60px;height:90px;object-fit:cover;border-radius:4px;margin-right:15px;"><div style="flex-grow:1;"><b>${displayName}</b><br><span style="color:orange;font-size:13px;">☁️ Cần dịch AI</span></div><button onclick="startTranslation('${type}', '${fullId}', '${encodeURIComponent(displayName)}', '${encodeURIComponent(posterImg)}', this)" class="btn-dl" style="background:#007bff; width:auto; border:none; padding:10px 15px;">🚀 Bắt Đầu Dịch</button></div>`;
             }
         }
         res.send(renderHTML(searchFormHTML + resultsHTML + `<br><button onclick="history.back()" class="btn-del" style="background:#6c757d; padding:10px 20px;">⬅ Trở Về</button>`, username, 'user'));
@@ -728,29 +717,26 @@ app.get('/search', async (req, res) => {
 app.post('/upload-translate', upload.single('subFile'), async (req, res) => {
     const username = getLoggedInUser(req);
     if (!username || !req.file) return res.redirect('/dashboard');
-    
     fs.readFile(req.file.path, 'utf8', async (err, data) => {
         fs.unlinkSync(req.file.path);
         const userSnap = await getDoc(doc(db, "users", username));
-        if (!userSnap.data().geminiKey && !userSnap.data().groqKey) return res.send("<script>alert('❌ Lỗi: Bạn chưa cài đặt bất kỳ API Key nào!'); history.back();</script>");
+        if (!userSnap.data().geminiKey && !userSnap.data().groqKey) return res.send("<script>alert('❌ Lỗi: Bạn chưa cài đặt API Key nào!'); history.back();</script>");
         
         const customId = `upload-${Date.now()}`;
         const taskId = `${customId}-task`;
-        activeTasks[taskId] = { status: 'Đang nạp file...', progress: 0, movieName: req.body.movieName, movieId: customId, isCancelled: false };
-        runSmartTranslation(taskId, 'manual', customId, req.body.movieName, username, userSnap.data(), data, '');
+        activeTasks[taskId] = { status: 'Đang xếp hàng chờ...', progress: 0, movieName: req.body.movieName, movieId: customId, isCancelled: false, username: username, isDismissed: false };
         
-        res.send(`<script>localStorage.setItem('activeTaskId', '${taskId}'); window.location.href='/dashboard';</script>`);
+        // Đẩy vào hàng chờ Server
+        translationQueue.push({ taskId, type: 'manual', id: customId, name: req.body.movieName, username, uData: userSnap.data(), rawSubData: data, posterUrl: '' });
+        processTranslationQueue();
+        
+        res.send(`<script>window.location.href='/dashboard';</script>`);
     });
 });
 
 // ==========================================
-// 6. TIẾN ĐỘ NỀN & SMART MULTI-PROVIDER ENGINE
+// 6. TIẾN ĐỘ NỀN & QUEUE SYSTEM 
 // ==========================================
-app.get('/api/cancel-task', (req, res) => {
-    if (activeTasks[req.query.taskId]) activeTasks[req.query.taskId].isCancelled = true;
-    res.json({ success: true });
-});
-
 app.get('/api/trigger-translate', async (req, res) => {
     const username = getLoggedInUser(req);
     if (!username) return res.json({ success: false, message: "Hết phiên đăng nhập!" });
@@ -759,30 +745,84 @@ app.get('/api/trigger-translate', async (req, res) => {
     const userSnap = await getDoc(doc(db, "users", username));
     const uData = userSnap.data();
 
-    if (!uData.geminiKey && !uData.groqKey) return res.json({ success: false, message: "Bạn chưa cài đặt API Key nào. Vui lòng vào Cấu hình API!" });
+    if (!uData.geminiKey && !uData.groqKey) return res.json({ success: false, message: "Bạn chưa cài đặt API Key. Vui lòng vào Cấu hình API!" });
     
     const taskId = `${id}-${Date.now()}`;
-    activeTasks[taskId] = { status: 'Đang chuẩn bị...', progress: 0, movieName: decodeURIComponent(name), movieId: id, isCancelled: false };
+    // Khởi tạo trong danh sách quản lý
+    activeTasks[taskId] = { status: 'Đang xếp hàng chờ...', progress: 0, movieName: decodeURIComponent(name), movieId: id, isCancelled: false, username: username, isDismissed: false };
     
-    runSmartTranslation(taskId, type, id, decodeURIComponent(name), username, uData, null, decodeURIComponent(poster));
+    // Đẩy tác vụ vào Hàng chờ
+    translationQueue.push({ taskId, type, id, name: decodeURIComponent(name), username, uData, rawSubData: null, posterUrl: decodeURIComponent(poster) });
+    processTranslationQueue(); // Kích hoạt bộ máy tiêu thụ hàng chờ
+    
     res.json({ success: true, taskId });
 });
 
-app.get('/api/task-status', (req, res) => res.json(activeTasks[req.query.taskId] || { status: 'Lỗi', progress: 0 }));
+// Hàm gọi vòng lặp xử lý hàng chờ
+async function processTranslationQueue() {
+    if (isProcessingQueue || translationQueue.length === 0) return;
+    isProcessingQueue = true;
+    
+    const task = translationQueue.shift(); // Lấy tác vụ đầu tiên ra
+    if (activeTasks[task.taskId] && activeTasks[task.taskId].isCancelled) {
+        isProcessingQueue = false;
+        processTranslationQueue();
+        return;
+    }
 
-// Hàm dịch phụ trợ Groq
+    await runSmartTranslation(task.taskId, task.type, task.id, task.name, task.username, task.uData, task.rawSubData, task.posterUrl);
+    
+    isProcessingQueue = false;
+    processTranslationQueue(); // Dịch xong cái này lại gọi hàm này để múc cái tiếp theo ra
+}
+
+// API CHUYÊN CHECK TRẠNG THÁI TOÀN CỤC CỦA USER ĐÓ
+app.get('/api/my-status', (req, res) => {
+    const username = getLoggedInUser(req);
+    if (!username) return res.json({ current: null, waitingCount: 0 });
+
+    let myTasks = [];
+    for (let tid in activeTasks) {
+        if (activeTasks[tid].username === username && !activeTasks[tid].isDismissed) {
+            myTasks.push({ taskId: tid, ...activeTasks[tid] });
+        }
+    }
+
+    // Ưu tiên hiển thị tác vụ đang chạy
+    let current = myTasks.find(t => t.status !== 'Đang xếp hàng chờ...' && !t.status.includes('Hoàn thành') && !t.status.includes('Lỗi') && !t.isCancelled);
+    // Nếu rỗng, hiển thị cái đang chờ
+    if (!current) current = myTasks.find(t => t.status === 'Đang xếp hàng chờ...');
+    // Nếu rỗng nốt, hiện cái vừa hoàn thành để tải
+    if (!current) current = myTasks.find(t => (t.status.includes('Hoàn thành') || t.status.includes('Lỗi')) && !t.isCancelled);
+
+    const waitingCount = myTasks.filter(t => t.status === 'Đang xếp hàng chờ...').length;
+    res.json({ current, waitingCount });
+});
+
+app.get('/api/cancel-task', (req, res) => {
+    if (activeTasks[req.query.taskId]) {
+        activeTasks[req.query.taskId].isCancelled = true;
+        activeTasks[req.query.taskId].isDismissed = true;
+    }
+    res.json({ success: true });
+});
+
+app.get('/api/dismiss-task', (req, res) => {
+    if (activeTasks[req.query.taskId]) activeTasks[req.query.taskId].isDismissed = true;
+    res.json({ success: true });
+});
+
+// Các hàm gọi API LLM
 async function translateWithGroq(chunkObj, groqKey) {
     const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
         model: "llama-3.3-70b-versatile",
         messages: [{ role: "system", content: "Bạn là biên dịch viên phim chuyên nghiệp. Dịch mảng JSON sang tiếng Việt. CHỈ TRẢ VỀ JSON HỢP LỆ." },
                    { role: "user", content: `Dữ liệu:\n${JSON.stringify(chunkObj)}` }]
     }, { headers: { 'Authorization': `Bearer ${groqKey}`, 'Content-Type': 'application/json' }});
-    
     let text = response.data.choices[0].message.content.replace(/```json/g, '').replace(/```/g, '').trim();
     return JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
 }
 
-// Hàm dịch phụ trợ Gemini
 async function translateWithGemini(chunkObj, geminiKey, geminiModel) {
     const response = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`, { 
         contents: [{ parts: [{ text: `Dịch mảng JSON sau sang tiếng Việt đời thường. TRẢ VỀ ĐÚNG CẤU TRÚC JSON.\n${JSON.stringify(chunkObj)}` }] }] 
@@ -791,7 +831,6 @@ async function translateWithGemini(chunkObj, geminiKey, geminiModel) {
     return JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
 }
 
-// Hàm điều phối chính (Multi-Provider Engine)
 async function runSmartTranslation(taskId, type, id, movieName, username, uData, rawSubData = null, posterUrl = '') {
     const updateTask = (status, progress) => { if (activeTasks[taskId] && !activeTasks[taskId].isCancelled) { activeTasks[taskId].status = status; activeTasks[taskId].progress = progress; } };
     try {
@@ -823,7 +862,6 @@ async function runSmartTranslation(taskId, type, id, movieName, username, uData,
             let chunkObj = {}; chunk.forEach((text, idx) => chunkObj[idx] = text);
             
             let success = false, retries = 0;
-            // Thuật toán: Nếu auto, ưu tiên check Groq có tồn tại không, không có thì xài Gemini.
             let currentProvider = (mode === 'auto' || mode === 'groq') && uData.groqKey ? 'groq' : 'gemini';
             let curProgress = Math.floor(10 + (i / originalTexts.length) * 80);
 
@@ -843,25 +881,22 @@ async function runSmartTranslation(taskId, type, id, movieName, username, uData,
                     success = true;
 
                 } catch (err) {
-                    // CƠ CHẾ AUTO-FALLBACK: Groq bị lỗi/quá tải -> Chuyển ngay sang Gemini
                     if (mode === 'auto' && currentProvider === 'groq' && uData.geminiKey) {
                         currentProvider = 'gemini';
                         updateTask(`⚡ Groq quá tải. Tự động chuyển sang Gemini...`, curProgress);
-                        continue; // Bỏ qua lượt đếm lỗi, thử lại ngay lập tức với Gemini
+                        continue; 
                     }
-                    
                     retries++;
-                    if (retries >= 3) {
-                        translatedTexts.push(...chunk); // Thất bại toàn tập -> Trả về tiếng Anh đoạn đó
-                    } else {
-                        const waitTime = currentProvider === 'groq' ? 3000 : 20000; // Groq nghỉ 3s, Gemini nghỉ 20s
+                    if (retries >= 3) { translatedTexts.push(...chunk); } 
+                    else {
+                        const waitTime = currentProvider === 'groq' ? 3000 : 20000; 
                         updateTask(`API quá tải. Đợi ${waitTime/1000}s thử lại...`, curProgress);
                         await new Promise(r => setTimeout(r, waitTime));
                     }
                 }
             }
-            if (currentProvider === 'gemini') await new Promise(r => setTimeout(r, 6000)); // Gemini cần delay giữa các nhịp
-            else await new Promise(r => setTimeout(r, 1000)); // Groq siêu nhanh, chỉ cần nghỉ 1s
+            if (currentProvider === 'gemini') await new Promise(r => setTimeout(r, 6000)); 
+            else await new Promise(r => setTimeout(r, 1000)); 
         }
 
         if (activeTasks[taskId].isCancelled) return;
@@ -873,14 +908,10 @@ async function runSmartTranslation(taskId, type, id, movieName, username, uData,
         });
 
         await setDoc(doc(db, "shared_subs", id), { 
-            movieName: movieName, 
-            vttContent: finalVttContent, 
-            translatedBy: username, 
-            poster: posterUrl || '', 
-            createdAt: new Date().toISOString() 
+            movieName: movieName, vttContent: finalVttContent, translatedBy: username, poster: posterUrl || '', createdAt: new Date().toISOString() 
         });
         updateTask('Hoàn thành 🎉', 100);
     } catch (err) { if (!activeTasks[taskId].isCancelled) updateTask(`❌ Lỗi: ${err.message}`, 0); }
 }
 
-app.listen(PORT, () => { console.log(`🚀 KHO PHỤ ĐỀ AI (V6.0 SMART MULTI-PROVIDER) CHẠY TẠI CỔNG 7000`); });
+app.listen(PORT, () => { console.log(`🚀 KHO PHỤ ĐỀ AI (V7.0 QUEUE ĐA NHIỆM BẤT TỬ) CHẠY TẠI CỔNG 7000`); });
