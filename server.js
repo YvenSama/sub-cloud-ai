@@ -31,7 +31,6 @@ const firebaseConfig = {
 const firebaseApp = initializeApp(firebaseConfig);
 const db = getFirestore(firebaseApp);
 
-// HỆ THỐNG HÀNG CHỜ TOÀN CỤC
 const activeTasks = {}; 
 const translationQueue = [];
 let isProcessingQueue = false;
@@ -156,7 +155,6 @@ const renderHTML = (content, username = null, role = 'guest') => `
                 document.getElementById('manualSearchGroup').style.display = isManual ? 'block' : 'none';
             }
 
-            // HỆ THỐNG XẾP HÀNG (QUEUE) MỚI TỪ PHÍA CLIENT
             function startTranslation(type, id, encodedName, encodedPoster, btnElement) {
                 if (btnElement) {
                     btnElement.innerText = '⏳ Đã thêm vào hàng chờ';
@@ -180,7 +178,6 @@ const renderHTML = (content, username = null, role = 'guest') => `
                     });
             }
 
-            // ĐỒNG BỘ WIDGET TOÀN CỤC VỚI SERVER
             function pollTaskStatus() {
                 document.getElementById('bgTaskWidget').style.display = 'block';
                 if(checkTaskInterval) clearInterval(checkTaskInterval);
@@ -193,7 +190,7 @@ const renderHTML = (content, username = null, role = 'guest') => `
                         if (data.current) {
                             const task = data.current;
                             let title = task.movieName;
-                            if (data.waitingCount > 0) title += \` (+\${data.waitingCount} phim đang chờ)\`;
+                            if (data.waitingCount > 0) title += \` (+\${data.waitingCount} đang chờ)\`;
                             
                             document.getElementById('bgTaskName').innerText = title;
                             document.getElementById('bgTaskStatus').innerText = task.status;
@@ -248,7 +245,7 @@ const renderHTML = (content, username = null, role = 'guest') => `
 
             window.onload = () => { 
                 if(localStorage.getItem('darkMode') === 'true') document.body.classList.add('dark'); 
-                pollTaskStatus(); // WIDGET TỰ ĐỘNG HIỆN LẠI NẾU F5 TRANG
+                pollTaskStatus(); 
             }
         </script>
     </head>
@@ -278,7 +275,7 @@ const renderHTML = (content, username = null, role = 'guest') => `
             </div>
         </div>
 
-        <!-- WIDGET DỊCH NGẦM ĐƯỢC LÀM MỚI -->
+        <!-- WIDGET DỊCH NGẦM -->
         <div id="bgTaskWidget">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                 <b id="bgTaskName" style="font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 250px; color: #007bff;">Đang tải...</b>
@@ -342,8 +339,7 @@ app.post('/api/register', async (req, res) => {
     
     const usersSnapshot = await getDocs(collection(db, "users"));
     await setDoc(userRef, { 
-        passwordHash: hashPwd(password), 
-        role: usersSnapshot.empty ? 'admin' : 'user', 
+        passwordHash: hashPwd(password), role: usersSnapshot.empty ? 'admin' : 'user', 
         geminiKey: '', groqKey: '', geminiModel: 'gemini-2.5-flash', translationMode: 'auto', 
         createdAt: new Date().toISOString(), bannedUntil: null 
     });
@@ -657,7 +653,7 @@ app.get('/delete-sub/:id', async (req, res) => {
     res.redirect('/dashboard');
 });
 
-// TÌM KIẾM CÓ BUTTON BACK
+// TÌM KIẾM
 app.get('/search', async (req, res) => {
     const username = getLoggedInUser(req);
     if (!username) return res.redirect('/');
@@ -706,7 +702,6 @@ app.get('/search', async (req, res) => {
             if (subSnap.exists()) {
                 resultsHTML += `<div class="card" style="display:flex; align-items:center;"><img src="${posterImg}" onerror="this.onerror=null; this.src='https://placehold.co/60x90/2c3e50/FFF?text=No+Poster';" style="width:60px;height:90px;object-fit:cover;border-radius:4px;margin-right:15px;"><div style="flex-grow:1;"><b>${displayName}</b><br><span style="color:green;font-size:13px;">⚡ Đã có trong Kho!</span></div><a href="/download/${fullId}?mode=bilingual" class="btn-dl">📥 Tải Song Ngữ</a></div>`;
             } else {
-                // CHÚ Ý: Bổ sung "this" vào hàm gọi để giao diện đổi nút thành "Đã vào hàng chờ"
                 resultsHTML += `<div class="card" style="display:flex; align-items:center;"><img src="${posterImg}" onerror="this.onerror=null; this.src='https://placehold.co/60x90/2c3e50/FFF?text=No+Poster';" style="width:60px;height:90px;object-fit:cover;border-radius:4px;margin-right:15px;"><div style="flex-grow:1;"><b>${displayName}</b><br><span style="color:orange;font-size:13px;">☁️ Cần dịch AI</span></div><button onclick="startTranslation('${type}', '${fullId}', '${encodeURIComponent(displayName)}', '${encodeURIComponent(posterImg)}', this)" class="btn-dl" style="background:#007bff; width:auto; border:none; padding:10px 15px;">🚀 Bắt Đầu Dịch</button></div>`;
             }
         }
@@ -726,7 +721,6 @@ app.post('/upload-translate', upload.single('subFile'), async (req, res) => {
         const taskId = `${customId}-task`;
         activeTasks[taskId] = { status: 'Đang xếp hàng chờ...', progress: 0, movieName: req.body.movieName, movieId: customId, isCancelled: false, username: username, isDismissed: false };
         
-        // Đẩy vào hàng chờ Server
         translationQueue.push({ taskId, type: 'manual', id: customId, name: req.body.movieName, username, uData: userSnap.data(), rawSubData: data, posterUrl: '' });
         processTranslationQueue();
         
@@ -735,7 +729,7 @@ app.post('/upload-translate', upload.single('subFile'), async (req, res) => {
 });
 
 // ==========================================
-// 6. TIẾN ĐỘ NỀN & QUEUE SYSTEM 
+// 6. TIẾN ĐỘ NỀN & QUEUE SYSTEM (FIX LỖI CẤU TRÚC JSON)
 // ==========================================
 app.get('/api/trigger-translate', async (req, res) => {
     const username = getLoggedInUser(req);
@@ -748,22 +742,19 @@ app.get('/api/trigger-translate', async (req, res) => {
     if (!uData.geminiKey && !uData.groqKey) return res.json({ success: false, message: "Bạn chưa cài đặt API Key. Vui lòng vào Cấu hình API!" });
     
     const taskId = `${id}-${Date.now()}`;
-    // Khởi tạo trong danh sách quản lý
     activeTasks[taskId] = { status: 'Đang xếp hàng chờ...', progress: 0, movieName: decodeURIComponent(name), movieId: id, isCancelled: false, username: username, isDismissed: false };
     
-    // Đẩy tác vụ vào Hàng chờ
     translationQueue.push({ taskId, type, id, name: decodeURIComponent(name), username, uData, rawSubData: null, posterUrl: decodeURIComponent(poster) });
-    processTranslationQueue(); // Kích hoạt bộ máy tiêu thụ hàng chờ
+    processTranslationQueue(); 
     
     res.json({ success: true, taskId });
 });
 
-// Hàm gọi vòng lặp xử lý hàng chờ
 async function processTranslationQueue() {
     if (isProcessingQueue || translationQueue.length === 0) return;
     isProcessingQueue = true;
     
-    const task = translationQueue.shift(); // Lấy tác vụ đầu tiên ra
+    const task = translationQueue.shift(); 
     if (activeTasks[task.taskId] && activeTasks[task.taskId].isCancelled) {
         isProcessingQueue = false;
         processTranslationQueue();
@@ -773,10 +764,9 @@ async function processTranslationQueue() {
     await runSmartTranslation(task.taskId, task.type, task.id, task.name, task.username, task.uData, task.rawSubData, task.posterUrl);
     
     isProcessingQueue = false;
-    processTranslationQueue(); // Dịch xong cái này lại gọi hàm này để múc cái tiếp theo ra
+    processTranslationQueue(); 
 }
 
-// API CHUYÊN CHECK TRẠNG THÁI TOÀN CỤC CỦA USER ĐÓ
 app.get('/api/my-status', (req, res) => {
     const username = getLoggedInUser(req);
     if (!username) return res.json({ current: null, waitingCount: 0 });
@@ -788,11 +778,8 @@ app.get('/api/my-status', (req, res) => {
         }
     }
 
-    // Ưu tiên hiển thị tác vụ đang chạy
     let current = myTasks.find(t => t.status !== 'Đang xếp hàng chờ...' && !t.status.includes('Hoàn thành') && !t.status.includes('Lỗi') && !t.isCancelled);
-    // Nếu rỗng, hiển thị cái đang chờ
     if (!current) current = myTasks.find(t => t.status === 'Đang xếp hàng chờ...');
-    // Nếu rỗng nốt, hiện cái vừa hoàn thành để tải
     if (!current) current = myTasks.find(t => (t.status.includes('Hoàn thành') || t.status.includes('Lỗi')) && !t.isCancelled);
 
     const waitingCount = myTasks.filter(t => t.status === 'Đang xếp hàng chờ...').length;
@@ -812,23 +799,25 @@ app.get('/api/dismiss-task', (req, res) => {
     res.json({ success: true });
 });
 
-// Các hàm gọi API LLM
 async function translateWithGroq(chunkObj, groqKey) {
     const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
         model: "llama-3.3-70b-versatile",
-        messages: [{ role: "system", content: "Bạn là biên dịch viên phim chuyên nghiệp. Dịch mảng JSON sang tiếng Việt. CHỈ TRẢ VỀ JSON HỢP LỆ." },
-                   { role: "user", content: `Dữ liệu:\n${JSON.stringify(chunkObj)}` }]
+        response_format: { type: "json_object" },
+        messages: [
+            { role: "system", content: "Bạn là biên dịch viên phim chuyên nghiệp. Dịch các value trong JSON object sau sang tiếng Việt đời thường. Giữ nguyên toàn bộ key số nguyên. Output phải là một cấu trúc JSON hợp lệ duy nhất." },
+            { role: "user", content: JSON.stringify(chunkObj) }
+        ]
     }, { headers: { 'Authorization': `Bearer ${groqKey}`, 'Content-Type': 'application/json' }});
-    let text = response.data.choices[0].message.content.replace(/```json/g, '').replace(/```/g, '').trim();
-    return JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
+    
+    return JSON.parse(response.data.choices[0].message.content);
 }
 
 async function translateWithGemini(chunkObj, geminiKey, geminiModel) {
     const response = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`, { 
-        contents: [{ parts: [{ text: `Dịch mảng JSON sau sang tiếng Việt đời thường. TRẢ VỀ ĐÚNG CẤU TRÚC JSON.\n${JSON.stringify(chunkObj)}` }] }] 
+        generationConfig: { responseMimeType: "application/json" },
+        contents: [{ parts: [{ text: `Dịch các value trong JSON object sau sang tiếng Việt đời thường. Giữ nguyên toàn bộ key. Output phải là cấu trúc JSON hợp lệ.\n${JSON.stringify(chunkObj)}` }] }] 
     });
-    let text = response.data.candidates[0].content.parts[0].text.replace(/```json/g, '').replace(/```/g, '').trim();
-    return JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
+    return JSON.parse(response.data.candidates[0].content.parts[0].text);
 }
 
 async function runSmartTranslation(taskId, type, id, movieName, username, uData, rawSubData = null, posterUrl = '') {
@@ -840,20 +829,30 @@ async function runSmartTranslation(taskId, type, id, movieName, username, uData,
             updateTask('Đang tải sub gốc...', 5);
             const osResponse = await axios.get(`https://opensubtitles-v3.strem.io/subtitles/${type}/${id}.json`, axiosConfig);
             const engSubs = (osResponse.data.subtitles || []).filter(sub => sub.lang === 'eng' || sub.lang === 'en');
-            if (engSubs.length === 0) return updateTask('❌ Lỗi: Chưa có sub Tiếng Anh.', 0);
+            if (engSubs.length === 0) return updateTask('❌ Lỗi: Phim này chưa có file Sub Tiếng Anh trên hệ thống API.', 0);
             const subResponse = await axios.get(engSubs[0].url, axiosConfig);
             subContent = subResponse.data;
         }
 
-        const blocks = subContent.trim().split(/\n\s*\n/);
+        // CHUẨN HÓA VÀ FIX LỖI TÁCH DÒNG CỦA FILE SRT
+        let normalizedContent = subContent.replace(/\r\n/g, '\n');
+        const blocks = normalizedContent.trim().split(/\n{2,}/);
         const parsedBlocks = [], originalTexts = [];
+        
         blocks.forEach(block => {
-            const lines = block.split('\n'), tsIdx = lines.findIndex(l => l.includes('-->')); 
-            if (tsIdx !== -1) { parsedBlocks.push({ isMeta: false, meta: lines.slice(0, tsIdx + 1).join('\n'), text: lines.slice(tsIdx + 1).join('\n') }); originalTexts.push(lines.slice(tsIdx + 1).join(' ')); } 
+            const lines = block.split('\n');
+            const tsIdx = lines.findIndex(l => l.includes('-->')); 
+            if (tsIdx !== -1) { 
+                let meta = lines.slice(0, tsIdx + 1).join('\n').replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
+                let text = lines.slice(tsIdx + 1).join('\n');
+                parsedBlocks.push({ isMeta: false, meta: meta, text: text }); 
+                originalTexts.push(text.replace(/\n/g, ' ')); 
+            } 
             else parsedBlocks.push({ isMeta: true, raw: block });
         });
 
-        const chunkSize = 100, translatedTexts = [];
+        const chunkSize = 40; 
+        const translatedTexts = [];
         const mode = uData.translationMode || 'auto';
         
         for (let i = 0; i < originalTexts.length; i += chunkSize) {
@@ -870,10 +869,10 @@ async function runSmartTranslation(taskId, type, id, movieName, username, uData,
                 try {
                     let parsedData;
                     if (currentProvider === 'groq') {
-                        updateTask(`Đang xử lý ${Math.min(i + chunkSize, originalTexts.length)}/${originalTexts.length} (⚡ Bằng Groq)...`, curProgress);
+                        updateTask(`Đang dịch thoại ${Math.min(i + chunkSize, originalTexts.length)}/${originalTexts.length} (⚡ Groq)...`, curProgress);
                         parsedData = await translateWithGroq(chunkObj, uData.groqKey);
                     } else {
-                        updateTask(`Đang xử lý ${Math.min(i + chunkSize, originalTexts.length)}/${originalTexts.length} (🧠 Bằng Gemini)...`, curProgress);
+                        updateTask(`Đang dịch thoại ${Math.min(i + chunkSize, originalTexts.length)}/${originalTexts.length} (🧠 Gemini)...`, curProgress);
                         parsedData = await translateWithGemini(chunkObj, uData.geminiKey, uData.geminiModel);
                     }
                     
@@ -883,7 +882,7 @@ async function runSmartTranslation(taskId, type, id, movieName, username, uData,
                 } catch (err) {
                     if (mode === 'auto' && currentProvider === 'groq' && uData.geminiKey) {
                         currentProvider = 'gemini';
-                        updateTask(`⚡ Groq quá tải. Tự động chuyển sang Gemini...`, curProgress);
+                        updateTask(`⚡ Groq quá tải. Chuyển sang Gemini...`, curProgress);
                         continue; 
                     }
                     retries++;
@@ -900,11 +899,19 @@ async function runSmartTranslation(taskId, type, id, movieName, username, uData,
         }
 
         if (activeTasks[taskId].isCancelled) return;
-        updateTask('Lưu lên Firebase...', 95);
-        let finalVttContent = "", textIndex = 0;
+        updateTask('Đang lưu lên Firebase...', 95);
+        
+        // CHUẨN HÓA CẤU TRÚC VTT ĐẦU RA
+        let finalVttContent = "WEBVTT\n\n"; 
+        let textIndex = 0;
         parsedBlocks.forEach(block => {
-            if (block.isMeta) finalVttContent += block.raw + "\n\n";
-            else { finalVttContent += block.meta + "\n" + block.text + "\n<font color='#f1c40f'>" + (translatedTexts[textIndex] || block.text) + "</font>\n\n"; textIndex++; }
+            if (block.isMeta) {
+                if (!block.raw.includes("WEBVTT")) finalVttContent += block.raw + "\n\n";
+            }
+            else { 
+                finalVttContent += block.meta + "\n" + block.text + "\n<font color='#f1c40f'>" + (translatedTexts[textIndex] || block.text) + "</font>\n\n"; 
+                textIndex++; 
+            }
         });
 
         await setDoc(doc(db, "shared_subs", id), { 
@@ -914,4 +921,4 @@ async function runSmartTranslation(taskId, type, id, movieName, username, uData,
     } catch (err) { if (!activeTasks[taskId].isCancelled) updateTask(`❌ Lỗi: ${err.message}`, 0); }
 }
 
-app.listen(PORT, () => { console.log(`🚀 KHO PHỤ ĐỀ AI (V7.0 QUEUE ĐA NHIỆM BẤT TỬ) CHẠY TẠI CỔNG 7000`); });
+app.listen(PORT, () => { console.log(`🚀 KHO PHỤ ĐỀ AI (V8.0 BẢN CHUẨN JSON VÀ VTT FORMAT) CHẠY TẠI CỔNG 7000`); });
