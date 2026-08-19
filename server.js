@@ -1,12 +1,17 @@
 const express = require('express');
 const axios = require('axios');
 const cookieParser = require('cookie-parser');
+const multer = require('multer'); // Thêm thư viện xử lý upload file
+const fs = require('fs');
 // --- IMPORT THƯ VIỆN FIREBASE ---
 const { initializeApp } = require("firebase/app");
 const { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc } = require("firebase/firestore");
 
 const app = express();
 const PORT = 7000;
+
+// Cấu hình Multer để lưu file tạm thời
+const upload = multer({ dest: 'uploads/' });
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
@@ -77,6 +82,14 @@ const renderHTML = (content, username = null, isAdmin = false) => `
             .db-list { list-style: none; padding: 0; margin: 0; }
             .db-item { display: flex; justify-content: space-between; align-items: center; padding: 15px 10px; border-bottom: 1px solid var(--border); }
             .db-item:last-child { border-bottom: none; }
+            
+            /* Thêm style cho toggle switch */
+            .toggle-switch { display: inline-flex; align-items: center; cursor: pointer; margin-bottom: 15px; }
+            .toggle-switch input { display: none; }
+            .toggle-slider { width: 40px; height: 20px; background-color: #ccc; border-radius: 20px; position: relative; transition: 0.3s; margin-right: 10px; }
+            .toggle-slider:before { content: ""; position: absolute; width: 16px; height: 16px; border-radius: 50%; background-color: white; top: 2px; left: 2px; transition: 0.3s; }
+            .toggle-switch input:checked + .toggle-slider { background-color: #007bff; }
+            .toggle-switch input:checked + .toggle-slider:before { transform: translateX(20px); }
         </style>
         <script>
             function toggleDark() {
@@ -133,6 +146,13 @@ const renderHTML = (content, username = null, isAdmin = false) => `
                 
                 btn.innerText = "🔌 Kiểm Tra & Lưu Key";
                 btn.disabled = false;
+            }
+
+            // Xử lý ẩn/hiện ô nhập thủ công
+            function toggleManualInput() {
+                const isManual = document.getElementById('manualMode').checked;
+                document.getElementById('autoSearchGroup').style.display = isManual ? 'none' : 'block';
+                document.getElementById('manualSearchGroup').style.display = isManual ? 'block' : 'none';
             }
         </script>
     </head>
@@ -263,20 +283,60 @@ app.get('/dashboard', async (req, res) => {
     res.send(renderHTML(`
         <div class="tab-nav">
             <button class="tab-btn active" onclick="openTab('tab-search', this)">🔍 Tìm Phim</button>
+            <button class="tab-btn" onclick="openTab('tab-upload', this)">📤 Tải File Lên (Thủ công)</button>
             <button class="tab-btn" onclick="openTab('tab-storage', this)">☁️ Kho Phụ Đề</button>
             <button class="tab-btn" onclick="openTab('tab-api', this)">⚙️ Cài đặt API</button>
         </div>
 
+        <!-- TAB TÌM KIẾM CÓ CHẾ ĐỘ THỦ CÔNG -->
         <div id="tab-search" class="tab-pane active">
             <div class="card" style="border-left: 4px solid #007bff;">
-                <h3 style="margin-top: 0;">🎬 TÌM KIẾM PHIM VÀ DỊCH</h3>
-                <form action="/search" method="GET">
-                    <input type="text" name="query" placeholder="Ví dụ: Avatar, The Matrix..." required>
-                    <select name="type">
-                        <option value="movie">Phim lẻ (Movie)</option>
-                        <option value="series">Phim bộ (Series)</option>
-                    </select>
-                    <button type="submit" class="main-btn" style="padding: 15px; font-size: 16px;">🔍 Tìm Kiếm Ngay</button>
+                <h3 style="margin-top: 0; display: flex; justify-content: space-between; align-items: center;">
+                    🎬 TÌM KIẾM PHIM VÀ DỊCH
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="manualMode" onchange="toggleManualInput()">
+                        <span class="toggle-slider"></span>
+                        <span style="font-size: 12px; font-weight: normal; color: var(--text);">Nhập ID thủ công</span>
+                    </label>
+                </h3>
+                
+                <!-- Tìm kiếm Tự động -->
+                <div id="autoSearchGroup">
+                    <form action="/search" method="GET">
+                        <input type="text" name="query" placeholder="Ví dụ: Avatar, The Matrix..." required>
+                        <select name="type">
+                            <option value="movie">Phim lẻ (Movie)</option>
+                            <option value="series">Phim bộ (Series)</option>
+                        </select>
+                        <button type="submit" class="main-btn" style="padding: 15px; font-size: 16px;">🔍 Tìm Kiếm Ngay</button>
+                    </form>
+                </div>
+
+                <!-- Tìm kiếm bằng IMDb ID (Ẩn mặc định) -->
+                <div id="manualSearchGroup" style="display: none; background: #e9ecef; padding: 15px; border-radius: 8px; border-left: 3px solid #6c757d;">
+                    <p style="font-size: 12px; color: #666; margin-top: 0;">*Sử dụng khi Web không tìm đúng tên phim. Lên <a href="https://www.imdb.com" target="_blank">IMDb</a> copy mã ID (vd: tt1234567) dán vào đây.</p>
+                    <form action="/search-manual" method="GET">
+                        <input type="text" name="imdbId" placeholder="Nhập mã IMDb ID (VD: tt0499549)..." required style="background: white;">
+                        <input type="text" name="customName" placeholder="Tên phim hiển thị (VD: Avatar)..." required style="background: white;">
+                        <select name="type" style="background: white;">
+                            <option value="movie">Phim lẻ (Movie)</option>
+                            <option value="series">Phim bộ (Series)</option>
+                        </select>
+                        <button type="submit" class="main-btn" style="padding: 15px; font-size: 16px; background: #6c757d;">🔍 Truy Xuất Mã Này</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB UPLOAD FILE DỊCH TRỰC TIẾP -->
+        <div id="tab-upload" class="tab-pane">
+            <div class="card" style="border-left: 4px solid #17a2b8;">
+                <h3 style="margin-top: 0;">📤 DỊCH FILE PHỤ ĐỀ TỪ MÁY TÍNH</h3>
+                <p style="font-size: 13px; color: #666;">Dành cho các phim không có sẵn trên hệ thống. Tải file Tiếng Anh (.srt hoặc .vtt) lên đây để AI dịch sang Tiếng Việt.</p>
+                <form action="/upload-translate" method="POST" enctype="multipart/form-data">
+                    <input type="file" name="subFile" accept=".srt,.vtt" required style="padding: 10px; background: #e9ecef;">
+                    <input type="text" name="movieName" placeholder="Tên phim (để lưu vào kho chung)..." required>
+                    <button type="submit" class="main-btn" style="padding: 15px; font-size: 16px; background: #17a2b8;">🚀 Dịch File Này</button>
                 </form>
             </div>
         </div>
@@ -324,7 +384,7 @@ app.get('/delete-sub/:id', async (req, res) => {
 });
 
 // ==========================================
-// 5. TÌM KIẾM (ĐÃ VÁ LỖI UNDEFINED & QUÉT MẠNH HƠN)
+// 5. TÌM KIẾM CƠ BẢN
 // ==========================================
 app.get('/search', async (req, res) => {
     const username = getLoggedInUser(req);
@@ -340,76 +400,95 @@ app.get('/search', async (req, res) => {
         let resultsHTML = `<h3>Kết quả tìm kiếm cho "${query}":</h3>`;
         
         for (const meta of metas) {
-            const movieId = meta.imdb_id;
-            
-            // XỬ LÝ LỖI (UNDEFINED) Ở ĐÂY: Ưu tiên lấy releaseInfo, nếu không có thì lấy year, nếu không có nữa thì bỏ trống.
-            const displayYear = meta.releaseInfo || meta.year || ''; 
-            const yearStr = displayYear ? `(${displayYear})` : '';
-
-            const subSnap = await getDoc(doc(db, "shared_subs", movieId));
-            
-            if (subSnap.exists()) {
-                resultsHTML += `
-                    <div class="result-item">
-                        <img src="${meta.poster || ''}">
-                        <div class="result-info">
-                            <h4>${meta.name} ${yearStr}</h4>
-                            <p style="color: #28a745; font-weight: bold;">⚡ Đã dịch sẵn trong Kho Đám Mây!</p>
-                        </div>
-                        <a href="/download-direct/${movieId}" class="btn-dl">⬇️ Tải Ngay (0.1s)</a>
-                    </div>`;
-            } else {
-                let hasOpenSubViet = false;
-                let openSubVietUrl = "";
-                try {
-                    // Thêm axiosConfig để tránh bị OpenSubtitles chặn luồng quét
-                    const osUrl = `https://opensubtitles-v3.strem.io/subtitles/${type}/${movieId}.json`;
-                    const osResponse = await axios.get(osUrl, axiosConfig);
-                    const allSubs = osResponse.data.subtitles || [];
-                    
-                    // QUÉT NHẠY HƠN: Quét mọi biến thể vi, vie, vietnamese...
-                    const vieSubs = allSubs.filter(sub => 
-                        sub.lang && (
-                            sub.lang.toLowerCase().includes('vi') || 
-                            sub.lang.toLowerCase() === 'vie' || 
-                            sub.lang.toLowerCase().includes('viet')
-                        )
-                    );
-                    
-                    if (vieSubs.length > 0) { 
-                        hasOpenSubViet = true; 
-                        openSubVietUrl = vieSubs[0].url; 
-                    }
-                } catch (e) {
-                    console.log(`Lỗi quét nguồn cho ${movieId}:`, e.message);
-                }
-
-                if (hasOpenSubViet) {
-                    resultsHTML += `
-                        <div class="result-item">
-                            <img src="${meta.poster || ''}">
-                            <div class="result-info">
-                                <h4>${meta.name} ${yearStr}</h4>
-                                <p style="color: #16a085; font-weight: bold;">✨ Nguồn mở đã có sẵn Sub Việt gốc!</p>
-                            </div>
-                            <a href="/download-external?url=${encodeURIComponent(openSubVietUrl)}&name=${encodeURIComponent(meta.name)}" class="btn-dl" style="background: #16a085;">⬇️ Tải Sub Gốc</a>
-                        </div>`;
-                } else {
-                    resultsHTML += `
-                        <div class="result-item">
-                            <img src="${meta.poster || ''}">
-                            <div class="result-info">
-                                <h4>${meta.name} ${yearStr}</h4>
-                                <p style="color: #e67e22;">☁️ Chưa có sub Việt. Cần dùng AI dịch mới.</p>
-                            </div>
-                            <a href="/trigger-translate?type=${type}&id=${movieId}&name=${encodeURIComponent(meta.name)}" class="btn-dl" style="background: #007bff;">🚀 Dịch Bằng AI</a>
-                        </div>`;
-                }
-            }
+            resultsHTML += await processMovieResult(meta.imdb_id, meta.name, meta.releaseInfo || meta.year, meta.poster, type);
         }
         res.send(renderHTML(resultsHTML + `<br><a href="/dashboard" class="main-btn" style="text-decoration:none; display:inline-block; padding:10px 20px;">⬅ Trở Về</a>`, username));
     } catch (error) { res.send(renderHTML(`<h3>Lỗi kết nối dữ liệu: ${error.message}</h3><br><a href="/dashboard">⬅ Trở về</a>`, username)); }
 });
+
+// ==========================================
+// 5.1 TÌM KIẾM BẰNG ID THỦ CÔNG
+// ==========================================
+app.get('/search-manual', async (req, res) => {
+    const username = getLoggedInUser(req);
+    if (!username) return res.redirect('/');
+    
+    const { imdbId, customName, type } = req.query;
+    try {
+        let resultsHTML = `<h3>Kết quả truy xuất ID "${imdbId}":</h3>`;
+        // Truyền poster giả do không có API lấy ảnh
+        resultsHTML += await processMovieResult(imdbId, customName, 'N/A', 'https://via.placeholder.com/60x90?text=Manual', type);
+        
+        res.send(renderHTML(resultsHTML + `<br><a href="/dashboard" class="main-btn" style="text-decoration:none; display:inline-block; padding:10px 20px;">⬅ Trở Về</a>`, username));
+    } catch (error) { res.send(renderHTML(`<h3>Lỗi kết nối dữ liệu: ${error.message}</h3><br><a href="/dashboard">⬅ Trở về</a>`, username)); }
+});
+
+// Hàm xử lý chung cho kết quả tìm kiếm để tránh lặp code
+async function processMovieResult(movieId, name, year, poster, type) {
+    const displayYear = year || ''; 
+    const yearStr = displayYear ? `(${displayYear})` : '';
+    let html = '';
+
+    const subSnap = await getDoc(doc(db, "shared_subs", movieId));
+    
+    if (subSnap.exists()) {
+        html += `
+            <div class="result-item">
+                <img src="${poster || ''}">
+                <div class="result-info">
+                    <h4>${name} ${yearStr}</h4>
+                    <p style="color: #28a745; font-weight: bold;">⚡ Đã dịch sẵn trong Kho Đám Mây!</p>
+                </div>
+                <a href="/download-direct/${movieId}" class="btn-dl">⬇️ Tải Ngay (0.1s)</a>
+            </div>`;
+    } else {
+        let hasOpenSubViet = false;
+        let openSubVietUrl = "";
+        try {
+            const osUrl = `https://opensubtitles-v3.strem.io/subtitles/${type}/${movieId}.json`;
+            const osResponse = await axios.get(osUrl, axiosConfig);
+            const allSubs = osResponse.data.subtitles || [];
+            
+            const vieSubs = allSubs.filter(sub => 
+                sub.lang && (
+                    sub.lang.toLowerCase().includes('vi') || 
+                    sub.lang.toLowerCase() === 'vie' || 
+                    sub.lang.toLowerCase().includes('viet')
+                )
+            );
+            
+            if (vieSubs.length > 0) { 
+                hasOpenSubViet = true; 
+                openSubVietUrl = vieSubs[0].url; 
+            }
+        } catch (e) {
+            console.log(`Lỗi quét nguồn cho ${movieId}:`, e.message);
+        }
+
+        if (hasOpenSubViet) {
+            html += `
+                <div class="result-item">
+                    <img src="${poster || ''}">
+                    <div class="result-info">
+                        <h4>${name} ${yearStr}</h4>
+                        <p style="color: #16a085; font-weight: bold;">✨ Nguồn mở đã có sẵn Sub Việt gốc!</p>
+                    </div>
+                    <a href="/download-external?url=${encodeURIComponent(openSubVietUrl)}&name=${encodeURIComponent(name)}" class="btn-dl" style="background: #16a085;">⬇️ Tải Sub Gốc</a>
+                </div>`;
+        } else {
+            html += `
+                <div class="result-item">
+                    <img src="${poster || ''}">
+                    <div class="result-info">
+                        <h4>${name} ${yearStr}</h4>
+                        <p style="color: #e67e22;">☁️ Chưa có sub Việt. Cần dùng AI dịch mới.</p>
+                    </div>
+                    <a href="/trigger-translate?type=${type}&id=${movieId}&name=${encodeURIComponent(name)}" class="btn-dl" style="background: #007bff;">🚀 Dịch Bằng AI</a>
+                </div>`;
+        }
+    }
+    return html;
+}
 
 app.get('/download-direct/:movieId', async (req, res) => {
     const movieId = req.params.movieId;
@@ -433,6 +512,48 @@ app.get('/download-external', async (req, res) => {
         res.send(subResponse.data);
     } catch (err) { res.send("Lỗi tải tệp: " + err.message); }
 });
+
+
+// ==========================================
+// 5.2 XỬ LÝ UPLOAD FILE DỊCH
+// ==========================================
+app.post('/upload-translate', upload.single('subFile'), async (req, res) => {
+    const username = getLoggedInUser(req);
+    if (!username) return res.redirect('/');
+    
+    const { movieName } = req.body;
+    const file = req.file;
+
+    if (!file) return res.send(renderHTML(`<h3>❌ Vui lòng chọn file!</h3><br><a href="/dashboard">⬅ Trở về</a>`, username));
+
+    // Đọc nội dung file upload
+    fs.readFile(file.path, 'utf8', async (err, data) => {
+        if (err) return res.send("Lỗi đọc file: " + err.message);
+        
+        // Xóa file tạm
+        fs.unlinkSync(file.path);
+
+        const userSnap = await getDoc(doc(db, "users", username));
+        const userData = userSnap.data();
+        const geminiKey = userData.geminiKey;
+        const geminiModel = userData.geminiModel || 'gemini-2.5-flash';
+
+        if (!geminiKey) {
+            return res.send(renderHTML(`<h3 style="color: red;">❌ Bạn chưa cấu hình API Key!</h3><a href="/dashboard">Quay lại</a>`, username));
+        }
+
+        // Tạo ID giả cho file tải lên thủ công
+        const customId = `upload-${Date.now()}`;
+        const taskId = `${customId}-task`;
+        
+        activeTasks[taskId] = { status: 'Đang nạp file tải lên...', progress: 0, movieName: movieName, movieId: customId, isCancelled: false };
+
+        // Chạy hàm dịch truyền trực tiếp dữ liệu file (isManualUpload = true)
+        runGeminiTranslation(taskId, 'manual', customId, movieName, username, geminiKey, geminiModel, data);
+        res.redirect(`/status-page?taskId=${taskId}`);
+    });
+});
+
 
 // ==========================================
 // 6. TIẾN ĐỘ NỀN & GEMINI API CALL 
@@ -548,7 +669,8 @@ app.get('/api/task-status', (req, res) => {
     res.json(activeTasks[req.query.taskId] || { status: 'Không tìm thấy tác vụ', progress: 0 });
 });
 
-async function runGeminiTranslation(taskId, type, id, movieName, username, apiKey, modelName) {
+// Thêm tham số rawSubData để nhận dữ liệu từ file tải lên
+async function runGeminiTranslation(taskId, type, id, movieName, username, apiKey, modelName, rawSubData = null) {
     const updateTask = (status, progress) => { 
         if (activeTasks[taskId] && !activeTasks[taskId].isCancelled) { 
             activeTasks[taskId].status = status; 
@@ -557,16 +679,27 @@ async function runGeminiTranslation(taskId, type, id, movieName, username, apiKe
     };
 
     try {
-        updateTask('Đang tải tệp phụ đề gốc...', 5);
-        const osUrl = `https://opensubtitles-v3.strem.io/subtitles/${type}/${id}.json`;
-        const osResponse = await axios.get(osUrl, axiosConfig);
-        const allSubs = osResponse.data.subtitles;
-        const engSubs = allSubs ? allSubs.filter(sub => sub.lang === 'eng' || sub.lang === 'en') : [];
+        let subContent = "";
         
-        if (engSubs.length === 0) return updateTask('❌ Lỗi: Phim này chưa có sub Tiếng Anh để dịch.', 0);
+        if (rawSubData) {
+            // Dịch file tải lên thủ công
+            updateTask('Đang phân tích file của bạn...', 5);
+            subContent = rawSubData;
+        } else {
+            // Dịch tự động qua API
+            updateTask('Đang tải tệp phụ đề gốc...', 5);
+            const osUrl = `https://opensubtitles-v3.strem.io/subtitles/${type}/${id}.json`;
+            const osResponse = await axios.get(osUrl, axiosConfig);
+            const allSubs = osResponse.data.subtitles;
+            const engSubs = allSubs ? allSubs.filter(sub => sub.lang === 'eng' || sub.lang === 'en') : [];
+            
+            if (engSubs.length === 0) return updateTask('❌ Lỗi: Phim này chưa có sub Tiếng Anh để dịch.', 0);
 
-        const subResponse = await axios.get(engSubs[0].url, axiosConfig);
-        const blocks = subResponse.data.trim().split(/\n\s*\n/);
+            const subResponse = await axios.get(engSubs[0].url, axiosConfig);
+            subContent = subResponse.data;
+        }
+
+        const blocks = subContent.trim().split(/\n\s*\n/);
         const parsedBlocks = [];
         const originalTexts = [];
 
@@ -686,7 +819,7 @@ ${JSON.stringify(chunkObj)}`
 
 app.listen(PORT, () => {
     console.log(`=======================================================`);
-    console.log(`🚀 NỀN TẢNG KHO PHỤ ĐỀ AI ĐÃ KHỞI CHẠY (BẢN VÁ LỖI)`);
+    console.log(`🚀 NỀN TẢNG KHO PHỤ ĐỀ AI ĐÃ KHỞI CHẠY (BẢN VÁ LỖI TÙY CHỈNH)`);
     console.log(`👉 Truy cập ngay tại: http://localhost:7000`);
     console.log(`=======================================================`);
 });
