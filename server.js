@@ -10,7 +10,6 @@ const { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc } = re
 const app = express();
 const PORT = 7000;
 
-// Cấu hình Multer để lưu file tạm thời
 const upload = multer({ dest: 'uploads/' });
 
 app.use(express.urlencoded({ extended: true }));
@@ -41,7 +40,7 @@ const axiosConfig = {
 };
 
 // ==========================================
-// 2. GIAO DIỆN HTML & CSS 
+// 2. GIAO DIỆN HTML & CSS TỔNG HỢP
 // ==========================================
 const renderHTML = (content, username = null, isAdmin = false) => `
     <html>
@@ -53,13 +52,14 @@ const renderHTML = (content, username = null, isAdmin = false) => `
             body.dark { --bg: #18191a; --text: #e4e6eb; --box-bg: #242526; --border: #3e4042; --input-bg: #3a3b3c; }
             body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; background: var(--bg); color: var(--text); transition: 0.3s; }
             .container { max-width: 800px; margin: auto; background: var(--box-bg); padding: 30px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); position: relative; }
-            input, select, button { width: 100%; padding: 12px; margin-top: 8px; margin-bottom: 15px; border: 1px solid var(--border); border-radius: 5px; font-size: 16px; box-sizing: border-box; background: var(--input-bg); color: var(--text); }
+            input[type="text"], input[type="number"], select, button { width: 100%; padding: 12px; margin-top: 8px; margin-bottom: 15px; border: 1px solid var(--border); border-radius: 5px; font-size: 16px; box-sizing: border-box; background: var(--input-bg); color: var(--text); }
             .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
             .grid-2 input { margin-bottom: 0; }
             button.main-btn { background: #007bff; color: white; border: none; font-weight: bold; cursor: pointer; transition: 0.3s; }
             button.main-btn:hover { background: #0056b3; }
-            .btn-dl { background: #28a745; color: white; border: none; font-weight: bold; padding: 10px 15px; cursor: pointer; border-radius: 5px; text-decoration: none; display: inline-block; text-align: center; font-size: 14px; }
-            .btn-del { background: #dc3545; color: white; border: none; font-weight: bold; padding: 8px 12px; cursor: pointer; border-radius: 5px; text-decoration: none; font-size: 14px; }
+            .btn-dl { background: #28a745; color: white; border: none; font-weight: bold; padding: 8px 12px; cursor: pointer; border-radius: 5px; text-decoration: none; display: inline-block; text-align: center; font-size: 13px; }
+            .btn-del { background: #dc3545; color: white; border: none; font-weight: bold; padding: 8px 12px; cursor: pointer; border-radius: 5px; text-decoration: none; font-size: 13px; }
+            .btn-edit { background: #ffc107; color: #212529; border: none; font-weight: bold; padding: 8px 12px; cursor: pointer; border-radius: 5px; font-size: 13px; }
             .theme-toggle { position: absolute; top: 15px; right: 15px; background: transparent; border: 1px solid var(--border); width: auto; padding: 5px 10px; font-size: 12px; cursor: pointer; border-radius: 20px; color: var(--text); }
             .user-bar { display: flex; justify-content: space-between; align-items: center; background: #34495e; color: white; padding: 10px 15px; border-radius: 5px; margin-bottom: 20px; font-size: 14px; }
             .user-bar a { color: #f1c40f; text-decoration: none; font-weight: bold; margin-left: 15px; }
@@ -78,11 +78,14 @@ const renderHTML = (content, username = null, isAdmin = false) => `
             .result-info { flex-grow: 1; }
             .result-info h4 { margin: 0 0 5px 0; }
             .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; margin-top: 5px;}
-            .badge.success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb;}
-            .badge.error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb;}
+            
+            .sub-group { margin-bottom: 15px; background: var(--box-bg); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+            .sub-group-title { background: rgba(0, 123, 255, 0.1); padding: 10px 15px; margin: 0; font-size: 16px; color: #007bff; border-bottom: 1px solid var(--border); }
             .db-list { list-style: none; padding: 0; margin: 0; }
-            .db-item { display: flex; justify-content: space-between; align-items: center; padding: 15px 10px; border-bottom: 1px solid var(--border); }
+            .db-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 15px; border-bottom: 1px solid var(--border); transition: 0.2s; }
             .db-item:last-child { border-bottom: none; }
+            .db-item:hover { background: var(--bg); }
+            .sub-checkbox { width: 18px; height: 18px; cursor: pointer; margin-right: 10px; margin-top: 0; }
             
             .toggle-switch { display: inline-flex; align-items: center; cursor: pointer; margin-bottom: 15px; }
             .toggle-switch input { display: none; }
@@ -96,56 +99,90 @@ const renderHTML = (content, username = null, isAdmin = false) => `
                 document.body.classList.toggle('dark');
                 localStorage.setItem('darkMode', document.body.classList.contains('dark'));
             }
-            
             function openTab(tabId, btnElement) {
                 document.querySelectorAll('.tab-pane').forEach(el => el.classList.remove('active'));
                 document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
                 document.getElementById(tabId).classList.add('active');
                 if(btnElement) btnElement.classList.add('active');
             }
-
             window.onload = () => { 
                 if(localStorage.getItem('darkMode') === 'true') document.body.classList.add('dark'); 
             }
-            
+
+            // Gửi API Sửa Tên
+            async function editSubName(id, oldName) {
+                const newName = prompt("Đổi tên phim/tập phim:", oldName);
+                if(newName && newName.trim() !== "" && newName !== oldName) {
+                    const res = await fetch('/api/edit-sub/' + id, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ newName: newName.trim() })
+                    });
+                    if(res.ok) location.reload();
+                    else alert("Có lỗi xảy ra khi đổi tên!");
+                }
+            }
+
+            // Tính năng Search trong Kho
+            function searchStorage() {
+                const filter = document.getElementById('searchBox').value.toLowerCase();
+                const groups = document.querySelectorAll('.sub-group');
+                groups.forEach(group => {
+                    let groupMatch = group.getAttribute('data-base').toLowerCase().includes(filter);
+                    let hasVisibleItem = false;
+                    const items = group.querySelectorAll('.db-item');
+                    items.forEach(item => {
+                        if (item.getAttribute('data-full').toLowerCase().includes(filter)) {
+                            item.style.display = 'flex';
+                            hasVisibleItem = true;
+                        } else {
+                            item.style.display = 'none';
+                        }
+                    });
+                    group.style.display = (groupMatch || hasVisibleItem) ? 'block' : 'none';
+                });
+            }
+
+            // Tính năng Tải nhiều file cùng lúc
+            function downloadSelected() {
+                const checkboxes = document.querySelectorAll('.sub-checkbox:checked');
+                if(checkboxes.length === 0) return alert('Vui lòng chọn ít nhất 1 phụ đề để tải!');
+                
+                checkboxes.forEach((cb, index) => {
+                    setTimeout(() => {
+                        const a = document.createElement('a');
+                        a.href = '/download-direct/' + cb.value;
+                        a.style.display = 'none';
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                    }, index * 800); // Tải cách nhau 0.8s để trình duyệt không chặn
+                });
+            }
+
+            // Chọn tất cả
+            function toggleSelectAll(source) {
+                const checkboxes = document.querySelectorAll('.sub-checkbox');
+                checkboxes.forEach(cb => cb.checked = source.checked);
+            }
+
             async function testAndSaveKey() {
+                // ... (Giữ nguyên logic API Key như cũ)
                 const keyInput = document.getElementById('geminiKey').value.trim();
                 const modelSelect = document.getElementById('geminiModel').value;
                 const statusBox = document.getElementById('keyStatus');
                 const btn = document.getElementById('btnTestKey');
-                
-                if(!keyInput) {
-                    statusBox.innerHTML = '<span class="badge error">Vui lòng nhập Key!</span>';
-                    return;
-                }
-                
-                btn.innerText = "⏳ Đang kiểm tra...";
-                btn.disabled = true;
-                
+                if(!keyInput) { statusBox.innerHTML = '<span class="badge error">Vui lòng nhập Key!</span>'; return; }
+                btn.innerText = "⏳ Đang kiểm tra..."; btn.disabled = true;
                 try {
-                    const res = await fetch('/api/test-gemini', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ apiKey: keyInput, modelName: modelSelect })
-                    });
+                    const res = await fetch('/api/test-gemini', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ apiKey: keyInput, modelName: modelSelect }) });
                     const result = await res.json();
-                    
                     if(result.success) {
-                        statusBox.innerHTML = '<span class="badge success">✅ Key & Model Hợp Lệ! Đã lưu thành công.</span>';
-                        await fetch('/save-key', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ geminiKey: keyInput, modelName: modelSelect })
-                        });
-                    } else {
-                        statusBox.innerHTML = '<span class="badge error">❌ Lỗi: ' + result.message + '</span>';
-                    }
-                } catch(e) {
-                    statusBox.innerHTML = '<span class="badge error">❌ Không thể kết nối đến máy chủ.</span>';
-                }
-                
-                btn.innerText = "🔌 Kiểm Tra & Lưu Key";
-                btn.disabled = false;
+                        statusBox.innerHTML = '<span class="badge success">✅ Key & Model Hợp Lệ! Đã lưu.</span>';
+                        await fetch('/save-key', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ geminiKey: keyInput, modelName: modelSelect }) });
+                    } else statusBox.innerHTML = '<span class="badge error">❌ Lỗi: ' + result.message + '</span>';
+                } catch(e) { statusBox.innerHTML = '<span class="badge error">❌ Lỗi kết nối.</span>'; }
+                btn.innerText = "🔌 Kiểm Tra & Lưu Key"; btn.disabled = false;
             }
 
             function toggleManualInput() {
@@ -154,14 +191,8 @@ const renderHTML = (content, username = null, isAdmin = false) => `
                 document.getElementById('manualSearchGroup').style.display = isManual ? 'block' : 'none';
             }
 
-            // Hiện khung Mùa/Tập khi chọn Phim Bộ
             function handleTypeChange(selectElement, targetId) {
-                const group = document.getElementById(targetId);
-                if (selectElement.value === 'series') {
-                    group.style.display = 'grid';
-                } else {
-                    group.style.display = 'none';
-                }
+                document.getElementById(targetId).style.display = selectElement.value === 'series' ? 'grid' : 'none';
             }
         </script>
     </head>
@@ -184,7 +215,7 @@ const renderHTML = (content, username = null, isAdmin = false) => `
 `;
 
 // ==========================================
-// 3. ROUTE ĐĂNG NHẬP (Giữ nguyên)
+// 3. ROUTE ĐĂNG NHẬP
 // ==========================================
 app.get('/', (req, res) => {
     if (getLoggedInUser(req)) return res.redirect('/dashboard');
@@ -206,53 +237,64 @@ app.post('/login', async (req, res) => {
     
     const userRef = doc(db, "users", username);
     const userSnap = await getDoc(userRef);
-    
     if (!userSnap.exists()) {
         const usersSnapshot = await getDocs(collection(db, "users"));
-        const isAdmin = usersSnapshot.empty; 
-        
-        await setDoc(userRef, { 
-            role: isAdmin ? 'admin' : 'user', 
-            geminiKey: '',
-            geminiModel: 'gemini-2.5-flash', 
-            createdAt: new Date().toISOString()
-        });
+        await setDoc(userRef, { role: usersSnapshot.empty ? 'admin' : 'user', geminiKey: '', geminiModel: 'gemini-2.5-flash', createdAt: new Date().toISOString() });
     }
-    
     res.cookie('username', username, { maxAge: 86400000 });
     res.redirect('/dashboard');
 });
 
-app.get('/logout', (req, res) => {
-    res.clearCookie('username');
-    res.redirect('/');
-});
+app.get('/logout', (req, res) => { res.clearCookie('username'); res.redirect('/'); });
 
 // ==========================================
-// 4. API TEST KEY & DASHBOARD
+// 4. API TÙY CHỈNH (TEST KEY & EDIT NAME)
 // ==========================================
-app.post('/api/test-gemini', async (req, res) => {
+app.post('/api/test-gemini', async (req, res) => { /* Code cũ giữ nguyên */
     const { apiKey, modelName } = req.body;
     try {
-        const response = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`, {
-            contents: [{ parts: [{ text: "Respond with the word 'OK' only." }] }]
-        });
+        const response = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`, { contents: [{ parts: [{ text: "OK" }] }] });
         if (response.data.candidates) res.json({ success: true });
-    } catch (error) {
-        const errorMsg = error.response?.data?.error?.message || "Key không hợp lệ hoặc Model này không khả dụng.";
-        res.json({ success: false, message: errorMsg });
-    }
+    } catch (error) { res.json({ success: false, message: error.response?.data?.error?.message || "Lỗi Key" }); }
 });
 
 app.post('/save-key', async (req, res) => {
     const username = getLoggedInUser(req);
-    const { geminiKey, modelName } = req.body;
-    if (username && geminiKey) {
-        await setDoc(doc(db, "users", username), { geminiKey, geminiModel: modelName }, { merge: true });
-    }
+    if (username && req.body.geminiKey) await setDoc(doc(db, "users", username), { geminiKey: req.body.geminiKey, geminiModel: req.body.modelName }, { merge: true });
     res.json({ success: true });
 });
 
+// Nút Sửa Tên Phim
+app.post('/api/edit-sub/:id', async (req, res) => {
+    const username = getLoggedInUser(req);
+    if (!username) return res.status(403).json({ success: false });
+    const userSnap = await getDoc(doc(db, "users", username));
+    const subSnap = await getDoc(doc(db, "shared_subs", req.params.id));
+    
+    if (subSnap.exists()) {
+        // Chỉ admin hoặc người upload mới được đổi tên
+        if (userSnap.data().role === 'admin' || subSnap.data().translatedBy === username) {
+            await setDoc(doc(db, "shared_subs", req.params.id), { movieName: req.body.newName }, { merge: true });
+            return res.json({ success: true });
+        }
+    }
+    res.status(403).json({ success: false });
+});
+
+app.get('/delete-sub/:id', async (req, res) => {
+    const username = getLoggedInUser(req);
+    if (!username) return res.redirect('/');
+    const userSnap = await getDoc(doc(db, "users", username));
+    const subSnap = await getDoc(doc(db, "shared_subs", req.params.id));
+    if (userSnap.data().role === 'admin' || (subSnap.exists() && subSnap.data().translatedBy === username)) {
+        await deleteDoc(doc(db, "shared_subs", req.params.id));
+        res.redirect('/dashboard');
+    } else { res.send("Bạn không có quyền Xóa!"); }
+});
+
+// ==========================================
+// 5. DASHBOARD & KHO LƯU TRỮ TỐI ƯU
+// ==========================================
 app.get('/dashboard', async (req, res) => {
     const username = getLoggedInUser(req);
     if (!username) return res.redirect('/');
@@ -262,28 +304,67 @@ app.get('/dashboard', async (req, res) => {
     const isAdmin = userData.role === 'admin';
     const currentModel = userData.geminiModel || 'gemini-2.5-flash';
 
+    // LẤY VÀ SẮP XẾP DỮ LIỆU
     const subsSnapshot = await getDocs(collection(db, "shared_subs"));
+    const allSubs = [];
+    subsSnapshot.forEach(docSnap => allSubs.push({ id: docSnap.id, ...docSnap.data() }));
+
+    // Sắp xếp A-Z theo tên phim
+    allSubs.sort((a, b) => a.movieName.localeCompare(b.movieName));
+
+    // Gom nhóm phim (Dựa vào tên gốc, loại bỏ chuỗi "Mùa/Tập" ra khỏi tên thư mục)
+    const groupedSubs = {};
+    allSubs.forEach(sub => {
+        let baseName = sub.movieName.replace(/\s*\((Mùa|Season|Tập|Ep).*?\)/i, '').trim();
+        if (!groupedSubs[baseName]) groupedSubs[baseName] = [];
+        groupedSubs[baseName].push(sub);
+    });
+
     let dbHtml = '';
-    if (subsSnapshot.empty) {
+    if (allSubs.length === 0) {
         dbHtml = `<div style="text-align: center; padding: 40px 0; opacity: 0.6;"><p style="font-size: 40px; margin: 0;">📭</p><p>Kho chung hiện đang trống.</p></div>`;
     } else {
-        dbHtml = `<ul class="db-list">`;
-        subsSnapshot.forEach(docSnap => {
-            const sub = docSnap.data();
-            const id = docSnap.id;
+        dbHtml = `
+            <div style="display: flex; gap: 10px; margin-bottom: 15px; align-items: center;">
+                <input type="text" id="searchBox" onkeyup="searchStorage()" placeholder="🔍 Tìm nhanh tên phim, tập phim..." style="margin: 0; flex: 1;">
+                <button onclick="downloadSelected()" class="btn-dl" style="margin: 0; padding: 12px 15px; background: #6c757d;">📥 Tải Mục Đã Chọn</button>
+            </div>
+            <div style="margin-bottom: 10px; font-size: 14px;">
+                <input type="checkbox" id="selectAll" onclick="toggleSelectAll(this)" style="width:auto; display:inline-block;"> <label for="selectAll"><b>Chọn tất cả</b></label>
+            </div>
+        `;
+        
+        for (const [baseName, group] of Object.entries(groupedSubs)) {
+            // Sắp xếp các tập bên trong theo thời gian tạo (cũ -> mới)
+            group.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+            
             dbHtml += `
-                <li class="db-item">
-                    <div>
-                        <b style="font-size: 16px;">${sub.movieName}</b> <br>
-                        <span style="font-size: 12px; color: #888;">Dịch bởi: <b style="color: #007bff">${sub.translatedBy}</b> | ${new Date(sub.createdAt).toLocaleDateString()}</span>
-                    </div>
-                    <div style="display: flex; gap: 10px;">
-                        <a href="/download-direct/${id}" class="btn-dl">⬇️ Tải Về</a>
-                        ${isAdmin ? `<a href="/delete-sub/${id}" class="btn-del" onclick="return confirm('Bạn muốn xóa?')">🗑️ Xóa</a>` : ''}
-                    </div>
-                </li>`;
-        });
-        dbHtml += `</ul>`;
+                <div class="sub-group" data-base="${baseName}">
+                    <h4 class="sub-group-title">📁 ${baseName}</h4>
+                    <ul class="db-list">`;
+            
+            group.forEach(sub => {
+                const dateStr = new Date(sub.createdAt).toLocaleString('vi-VN', { hour: '2-digit', minute:'2-digit', day:'2-digit', month:'2-digit', year:'numeric'});
+                const canEdit = isAdmin || sub.translatedBy === username;
+                
+                dbHtml += `
+                    <li class="db-item" data-full="${sub.movieName}">
+                        <div style="display: flex; align-items: center;">
+                            <input type="checkbox" class="sub-checkbox" value="${sub.id}">
+                            <div>
+                                <b style="font-size: 15px;">${sub.movieName}</b> <br>
+                                <span style="font-size: 12px; color: #888;">⏱️ ${dateStr} | 👤 ${sub.translatedBy}</span>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 5px;">
+                            <a href="/download-direct/${sub.id}" class="btn-dl" title="Tải về">⬇️</a>
+                            ${canEdit ? `<button onclick="editSubName('${sub.id}', '${sub.movieName}')" class="btn-edit" title="Đổi tên">✏️</button>` : ''}
+                            ${canEdit ? `<a href="/delete-sub/${sub.id}" class="btn-del" title="Xóa" onclick="return confirm('Bạn muốn xóa?')">🗑️</a>` : ''}
+                        </div>
+                    </li>`;
+            });
+            dbHtml += `</ul></div>`;
+        }
     }
 
     res.send(renderHTML(`
@@ -294,7 +375,6 @@ app.get('/dashboard', async (req, res) => {
             <button class="tab-btn" onclick="openTab('tab-api', this)">⚙️ Cài đặt API</button>
         </div>
 
-        <!-- TAB TÌM KIẾM ĐÃ NÂNG CẤP NHẬP MÙA/TẬP -->
         <div id="tab-search" class="tab-pane active">
             <div class="card" style="border-left: 4px solid #007bff;">
                 <h3 style="margin-top: 0; display: flex; justify-content: space-between; align-items: center;">
@@ -305,8 +385,6 @@ app.get('/dashboard', async (req, res) => {
                         <span style="font-size: 12px; font-weight: normal; color: var(--text);">Nhập ID thủ công</span>
                     </label>
                 </h3>
-                
-                <!-- Tìm kiếm Tự động -->
                 <div id="autoSearchGroup">
                     <form action="/search" method="GET">
                         <input type="text" name="query" placeholder="Tên phim (VD: Adventure Time, Avatar...)" required>
@@ -321,12 +399,9 @@ app.get('/dashboard', async (req, res) => {
                         <button type="submit" class="main-btn" style="padding: 15px; font-size: 16px;">🔍 Tìm Kiếm Ngay</button>
                     </form>
                 </div>
-
-                <!-- Tìm kiếm bằng IMDb ID -->
                 <div id="manualSearchGroup" style="display: none; background: #e9ecef; padding: 15px; border-radius: 8px; border-left: 3px solid #6c757d;">
-                    <p style="font-size: 12px; color: #666; margin-top: 0;">Lấy ID trên IMDb (vd: tt1046141).</p>
                     <form action="/search-manual" method="GET">
-                        <input type="text" name="imdbId" placeholder="Mã IMDb ID gốc..." required style="background: white;">
+                        <input type="text" name="imdbId" placeholder="Mã IMDb ID gốc (vd: tt1046141)..." required style="background: white;">
                         <input type="text" name="customName" placeholder="Tên phim hiển thị..." required style="background: white;">
                         <select name="type" onchange="handleTypeChange(this, 'manualSeasonGroup')" style="background: white;">
                             <option value="movie">Phim lẻ (Movie)</option>
@@ -342,7 +417,6 @@ app.get('/dashboard', async (req, res) => {
             </div>
         </div>
 
-        <!-- TAB UPLOAD FILE -->
         <div id="tab-upload" class="tab-pane">
             <div class="card" style="border-left: 4px solid #17a2b8;">
                 <h3 style="margin-top: 0;">📤 DỊCH FILE PHỤ ĐỀ TỪ MÁY TÍNH</h3>
@@ -355,11 +429,9 @@ app.get('/dashboard', async (req, res) => {
         </div>
 
         <div id="tab-storage" class="tab-pane">
-            <div class="card" style="border-left: 4px solid #28a745;">
-                <h3 style="margin-top: 0; margin-bottom: 20px;">☁️ DANH SÁCH KHO PHỤ ĐỀ CHUNG</h3>
-                <div style="max-height: 500px; overflow-y: auto; padding-right: 10px;">
-                    ${dbHtml}
-                </div>
+            <div class="card" style="border-left: 4px solid #28a745; padding: 20px;">
+                <h3 style="margin-top: 0; margin-bottom: 15px;">☁️ KHO PHỤ ĐỀ ĐÃ DỊCH</h3>
+                ${dbHtml}
             </div>
         </div>
 
@@ -382,62 +454,41 @@ app.get('/dashboard', async (req, res) => {
     `, username, isAdmin));
 });
 
-app.get('/delete-sub/:id', async (req, res) => {
-    const username = getLoggedInUser(req);
-    if (!username) return res.redirect('/');
-    const userSnap = await getDoc(doc(db, "users", username));
-    if (userSnap.data().role !== 'admin') return res.send("Bạn không có quyền Admin!");
-    try {
-        await deleteDoc(doc(db, "shared_subs", req.params.id));
-        res.redirect('/dashboard');
-    } catch (err) { res.send("Lỗi xóa: " + err.message); }
-});
 
 // ==========================================
-// 5. TÌM KIẾM ĐÃ CẤU TRÚC LẠI CHO PHIM BỘ
+// 6. XỬ LÝ TÌM KIẾM & PHỤ TRỢ (Tên Tải Về Mượt Hơn)
 // ==========================================
 app.get('/search', async (req, res) => {
     const username = getLoggedInUser(req);
     if (!username) return res.redirect('/');
-    
     const { query, type, season, episode } = req.query;
     try {
         const response = await axios.get(`https://v3-cinemeta.strem.io/catalog/${type}/top/search=${encodeURIComponent(query)}.json`, axiosConfig);
         const metas = response.data.metas;
-
         if (!metas || metas.length === 0) return res.send(renderHTML(`<h3>❌ Không tìm thấy phim</h3><br><a href="/dashboard">⬅ Trở về</a>`, username));
-
         let resultsHTML = `<h3>Kết quả tìm kiếm cho "${query}":</h3>`;
-        
-        for (const meta of metas) {
-            resultsHTML += await processMovieResult(meta.imdb_id, meta.name, meta.releaseInfo || meta.year, meta.poster, type, season, episode);
-        }
+        for (const meta of metas) resultsHTML += await processMovieResult(meta.imdb_id, meta.name, meta.releaseInfo || meta.year, meta.poster, type, season, episode);
         res.send(renderHTML(resultsHTML + `<br><a href="/dashboard" class="main-btn" style="text-decoration:none; display:inline-block; padding:10px 20px;">⬅ Trở Về</a>`, username));
-    } catch (error) { res.send(renderHTML(`<h3>Lỗi kết nối dữ liệu: ${error.message}</h3><br><a href="/dashboard">⬅ Trở về</a>`, username)); }
+    } catch (error) { res.send(renderHTML(`<h3>Lỗi: ${error.message}</h3><br><a href="/dashboard">⬅ Trở về</a>`, username)); }
 });
 
 app.get('/search-manual', async (req, res) => {
     const username = getLoggedInUser(req);
     if (!username) return res.redirect('/');
-    
     const { imdbId, customName, type, season, episode } = req.query;
     try {
         let resultsHTML = `<h3>Kết quả truy xuất ID "${imdbId}":</h3>`;
         resultsHTML += await processMovieResult(imdbId, customName, 'N/A', 'https://via.placeholder.com/60x90?text=Manual', type, season, episode);
-        
         res.send(renderHTML(resultsHTML + `<br><a href="/dashboard" class="main-btn" style="text-decoration:none; display:inline-block; padding:10px 20px;">⬅ Trở Về</a>`, username));
-    } catch (error) { res.send(renderHTML(`<h3>Lỗi kết nối dữ liệu: ${error.message}</h3><br><a href="/dashboard">⬅ Trở về</a>`, username)); }
+    } catch (error) { res.send(renderHTML(`<h3>Lỗi: ${error.message}</h3><br><a href="/dashboard">⬅ Trở về</a>`, username)); }
 });
 
-// HÀM XỬ LÝ GHÉP MÃ S/E (QUAN TRỌNG NHẤT)
 async function processMovieResult(movieId, name, year, poster, type, season, episode) {
     const displayYear = year || ''; 
     const yearStr = displayYear ? `(${displayYear})` : '';
     let html = '';
-
-    // Nếu là phim bộ và có nhập mùa/tập, tạo mã fullId chuẩn của Stremio API
     let fullId = movieId;
-    let displayName = `${name} ${yearStr}`;
+    let displayName = `${name} ${yearStr}`.trim();
     
     if (type === 'series' && season && episode) {
         fullId = `${movieId}:${season}:${episode}`;
@@ -445,71 +496,31 @@ async function processMovieResult(movieId, name, year, poster, type, season, epi
     }
 
     const subSnap = await getDoc(doc(db, "shared_subs", fullId));
-    
     if (subSnap.exists()) {
-        html += `
-            <div class="result-item">
-                <img src="${poster || ''}">
-                <div class="result-info">
-                    <h4>${displayName}</h4>
-                    <p style="color: #28a745; font-weight: bold;">⚡ Đã dịch sẵn trong Kho Đám Mây!</p>
-                </div>
-                <a href="/download-direct/${fullId}" class="btn-dl">⬇️ Tải Ngay (0.1s)</a>
-            </div>`;
+        html += `<div class="result-item"><img src="${poster || ''}"><div class="result-info"><h4>${displayName}</h4><p style="color: #28a745; font-weight: bold;">⚡ Đã có trong Kho!</p></div><a href="/download-direct/${fullId}" class="btn-dl">⬇️ Tải Ngay</a></div>`;
     } else {
-        let hasOpenSubViet = false;
-        let openSubVietUrl = "";
+        let hasOpenSubViet = false, openSubVietUrl = "";
         try {
-            // ĐÂY CHÍNH LÀ CHỖ API TÌM THEO ID (với Phim bộ thì nó là ttXXXXXX:1:2)
-            const osUrl = `https://opensubtitles-v3.strem.io/subtitles/${type}/${fullId}.json`;
-            const osResponse = await axios.get(osUrl, axiosConfig);
-            const allSubs = osResponse.data.subtitles || [];
-            
-            const vieSubs = allSubs.filter(sub => 
-                sub.lang && (sub.lang.toLowerCase().includes('vi') || sub.lang.toLowerCase() === 'vie')
-            );
-            
-            if (vieSubs.length > 0) { 
-                hasOpenSubViet = true; 
-                openSubVietUrl = vieSubs[0].url; 
-            }
-        } catch (e) {
-            console.log(`Lỗi quét nguồn cho ${fullId}:`, e.message);
-        }
+            const osResponse = await axios.get(`https://opensubtitles-v3.strem.io/subtitles/${type}/${fullId}.json`, axiosConfig);
+            const vieSubs = (osResponse.data.subtitles || []).filter(sub => sub.lang && (sub.lang.toLowerCase().includes('vi') || sub.lang.toLowerCase() === 'vie'));
+            if (vieSubs.length > 0) { hasOpenSubViet = true; openSubVietUrl = vieSubs[0].url; }
+        } catch (e) { }
 
-        if (hasOpenSubViet) {
-            html += `
-                <div class="result-item">
-                    <img src="${poster || ''}">
-                    <div class="result-info">
-                        <h4>${displayName}</h4>
-                        <p style="color: #16a085; font-weight: bold;">✨ Đã có Sub Việt gốc!</p>
-                    </div>
-                    <a href="/download-external?url=${encodeURIComponent(openSubVietUrl)}&name=${encodeURIComponent(displayName)}" class="btn-dl" style="background: #16a085;">⬇️ Tải Sub Gốc</a>
-                </div>`;
-        } else {
-            html += `
-                <div class="result-item">
-                    <img src="${poster || ''}">
-                    <div class="result-info">
-                        <h4>${displayName}</h4>
-                        <p style="color: #e67e22;">☁️ Chưa có sub Việt. Cần dùng AI dịch mới.</p>
-                    </div>
-                    <a href="/trigger-translate?type=${type}&id=${fullId}&name=${encodeURIComponent(displayName)}" class="btn-dl" style="background: #007bff;">🚀 Dịch Bằng AI</a>
-                </div>`;
-        }
+        if (hasOpenSubViet) html += `<div class="result-item"><img src="${poster || ''}"><div class="result-info"><h4>${displayName}</h4><p style="color: #16a085; font-weight: bold;">✨ Đã có Sub Việt gốc!</p></div><a href="/download-external?url=${encodeURIComponent(openSubVietUrl)}&name=${encodeURIComponent(displayName)}" class="btn-dl" style="background: #16a085;">⬇️ Tải Sub Gốc</a></div>`;
+        else html += `<div class="result-item"><img src="${poster || ''}"><div class="result-info"><h4>${displayName}</h4><p style="color: #e67e22;">☁️ Cần dùng AI dịch.</p></div><a href="/trigger-translate?type=${type}&id=${fullId}&name=${encodeURIComponent(displayName)}" class="btn-dl" style="background: #007bff;">🚀 Dịch Bằng AI</a></div>`;
     }
     return html;
 }
 
+// Tối ưu tên file tải về (Giữ nguyên tiếng Việt, xóa ký tự đặc biệt)
 app.get('/download-direct/:movieId', async (req, res) => {
     const movieId = req.params.movieId;
     const subSnap = await getDoc(doc(db, "shared_subs", movieId));
     if (subSnap.exists()) {
         const data = subSnap.data();
-        const safeName = data.movieName.replace(/[^a-zA-Z0-9]/g, '-').replace(/-+/g, '-');
+        const safeName = data.movieName.replace(/[^a-zA-Z0-9\u00C0-\u024F\s\(\)-]/g, '').trim().replace(/\s+/g, '_');
         res.setHeader('Content-Type', 'text/vtt; charset=utf-8');
-        res.setHeader('Content-Disposition', `attachment; filename="${safeName}_CloudAI_song_ngu.vtt"`);
+        res.setHeader('Content-Disposition', `attachment; filename="${safeName}_CloudAI.vtt"`);
         res.send(data.vttContent);
     } else { res.send("Không tìm thấy dữ liệu!"); }
 });
@@ -518,309 +529,174 @@ app.get('/download-external', async (req, res) => {
     const { url, name } = req.query;
     try {
         const subResponse = await axios.get(url, axiosConfig);
-        const safeName = name.replace(/[^a-zA-Z0-9]/g, '-').replace(/-+/g, '-');
+        const safeName = name.replace(/[^a-zA-Z0-9\u00C0-\u024F\s\(\)-]/g, '').trim().replace(/\s+/g, '_');
         res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-        res.setHeader('Content-Disposition', `attachment; filename="${safeName}_vietsub_goc.srt"`);
+        res.setHeader('Content-Disposition', `attachment; filename="${safeName}_Goc.srt"`);
         res.send(subResponse.data);
     } catch (err) { res.send("Lỗi tải tệp: " + err.message); }
 });
 
-// ==========================================
-// 5.2 XỬ LÝ UPLOAD FILE DỊCH
-// ==========================================
 app.post('/upload-translate', upload.single('subFile'), async (req, res) => {
     const username = getLoggedInUser(req);
     if (!username) return res.redirect('/');
-    
     const { movieName } = req.body;
-    const file = req.file;
-
-    if (!file) return res.send(renderHTML(`<h3>❌ Vui lòng chọn file!</h3><br><a href="/dashboard">⬅ Trở về</a>`, username));
-
-    fs.readFile(file.path, 'utf8', async (err, data) => {
-        if (err) return res.send("Lỗi đọc file: " + err.message);
-        fs.unlinkSync(file.path);
-
+    if (!req.file) return res.send(renderHTML(`<h3>❌ Vui lòng chọn file!</h3><br><a href="/dashboard">⬅ Trở về</a>`, username));
+    fs.readFile(req.file.path, 'utf8', async (err, data) => {
+        if (err) return res.send("Lỗi đọc file");
+        fs.unlinkSync(req.file.path);
         const userSnap = await getDoc(doc(db, "users", username));
-        const userData = userSnap.data();
-        const geminiKey = userData.geminiKey;
-        const geminiModel = userData.geminiModel || 'gemini-2.5-flash';
-
-        if (!geminiKey) {
-            return res.send(renderHTML(`<h3 style="color: red;">❌ Bạn chưa cấu hình API Key!</h3><a href="/dashboard">Quay lại</a>`, username));
-        }
-
+        if (!userSnap.data().geminiKey) return res.send(renderHTML(`<h3 style="color: red;">❌ Chưa có API Key!</h3><a href="/dashboard">Quay lại</a>`, username));
+        
         const customId = `upload-${Date.now()}`;
         const taskId = `${customId}-task`;
-        
-        activeTasks[taskId] = { status: 'Đang nạp file tải lên...', progress: 0, movieName: movieName, movieId: customId, isCancelled: false };
-
-        runGeminiTranslation(taskId, 'manual', customId, movieName, username, geminiKey, geminiModel, data);
+        activeTasks[taskId] = { status: 'Đang nạp file...', progress: 0, movieName: movieName, movieId: customId, isCancelled: false };
+        runGeminiTranslation(taskId, 'manual', customId, movieName, username, userSnap.data().geminiKey, userSnap.data().geminiModel || 'gemini-2.5-flash', data);
         res.redirect(`/status-page?taskId=${taskId}`);
     });
 });
 
-
 // ==========================================
-// 6. TIẾN ĐỘ NỀN & GEMINI API CALL 
+// 7. TIẾN ĐỘ NỀN & GEMINI API CALL 
 // ==========================================
 app.get('/api/cancel-task', (req, res) => {
     const { taskId } = req.query;
-    if (activeTasks[taskId]) {
-        activeTasks[taskId].isCancelled = true;
-        activeTasks[taskId].status = '❌ Đã hủy bởi người dùng';
-    }
+    if (activeTasks[taskId]) { activeTasks[taskId].isCancelled = true; activeTasks[taskId].status = '❌ Đã hủy'; }
     res.json({ success: true });
 });
 
 app.get('/trigger-translate', async (req, res) => {
     const username = getLoggedInUser(req);
     const { type, id, name } = req.query;
-
     const userSnap = await getDoc(doc(db, "users", username));
-    const userData = userSnap.data();
-    const geminiKey = userData.geminiKey;
-    const geminiModel = userData.geminiModel || 'gemini-2.5-flash';
-
-    if (!geminiKey) {
-        return res.send(renderHTML(`
-            <div style="text-align:center;">
-                <h3 style="color: red;">❌ Bạn chưa cấu hình API Key!</h3>
-                <a href="/dashboard" class="btn-dl" style="background:#007bff;">Quay lại Bảng điều khiển</a>
-            </div>
-        `, username));
-    }
-
+    if (!userSnap.data().geminiKey) return res.send(renderHTML(`<div style="text-align:center;"><h3 style="color: red;">❌ Bạn chưa cấu hình API Key!</h3><a href="/dashboard" class="btn-dl" style="background:#007bff;">Quay lại</a></div>`, username));
+    
     const taskId = `${id}-${Date.now()}`;
     activeTasks[taskId] = { status: 'Đang chuẩn bị...', progress: 0, movieName: name, movieId: id, isCancelled: false };
-
-    runGeminiTranslation(taskId, type, id, name, username, geminiKey, geminiModel);
+    runGeminiTranslation(taskId, type, id, name, username, userSnap.data().geminiKey, userSnap.data().geminiModel || 'gemini-2.5-flash');
     res.redirect(`/status-page?taskId=${taskId}`);
 });
 
 app.get('/status-page', (req, res) => {
     const username = getLoggedInUser(req);
-    const { taskId } = req.query;
     res.send(renderHTML(`
         <div style="text-align: center; padding: 20px;">
             <h3 id="movieName">🎬 Đang nạp phim dữ liệu...</h3>
             <div style="background: #eee; border-radius: 20px; height: 25px; width: 100%; margin: 20px 0; overflow: hidden;">
                 <div id="progressBar" style="background: #007bff; height: 100%; width: 0%; transition: 0.5s;"></div>
             </div>
-            <p id="statusText" style="font-weight: bold; font-size: 18px; color: #d35400;">Đang khởi tạo kết nối đám mây...</p>
-            
-            <div id="cancelArea" style="margin-top: 15px;">
-                <button onclick="cancelTranslation()" class="btn-del" style="font-size: 16px; padding: 10px 20px;">🛑 Hủy Dịch</button>
-            </div>
-
-            <div id="downloadArea" style="margin-top: 30px; display: none;">
-                <a id="cloudDlBtn" href="" class="btn-dl" style="font-size: 18px; padding: 15px 30px;">📥 TẢI PHỤ ĐỀ XUỐNG MÁY</a>
-                <br><br>
-            </div>
+            <p id="statusText" style="font-weight: bold; font-size: 18px; color: #d35400;">Đang khởi tạo...</p>
+            <div id="cancelArea" style="margin-top: 15px;"><button onclick="cancelTranslation()" class="btn-del">🛑 Hủy Dịch</button></div>
+            <div id="downloadArea" style="margin-top: 30px; display: none;"><a id="cloudDlBtn" href="" class="btn-dl" style="font-size: 18px; padding: 15px 30px;">📥 TẢI PHỤ ĐỀ XUỐNG MÁY</a></div>
             <a href="/dashboard" style="color:var(--text); margin-top: 20px; display: inline-block;">⬅ Trở về Bảng Điều Khiển</a>
         </div>
         <script>
             let isDone = false;
-
             async function cancelTranslation() {
-                if(confirm('Bạn có chắc chắn muốn hủy quá trình dịch? Tiến trình sẽ dừng lại ngay lập tức.')) {
-                    await fetch('/api/cancel-task?taskId=${taskId}');
-                    document.getElementById('statusText').innerText = '❌ Đã hủy bởi người dùng';
-                    document.getElementById('statusText').style.color = '#dc3545';
-                    document.getElementById('progressBar').style.background = '#dc3545';
-                    document.getElementById('cancelArea').style.display = 'none';
+                if(confirm('Hủy quá trình dịch?')) {
+                    await fetch('/api/cancel-task?taskId=${req.query.taskId}');
+                    document.getElementById('statusText').innerText = '❌ Đã hủy'; document.getElementById('statusText').style.color = '#dc3545';
+                    document.getElementById('progressBar').style.background = '#dc3545'; document.getElementById('cancelArea').style.display = 'none';
                     isDone = true;
                 }
             }
-
             async function checkStatus() {
                 if (isDone) return;
-                const res = await fetch('/api/task-status?taskId=${taskId}');
+                const res = await fetch('/api/task-status?taskId=${req.query.taskId}');
                 const task = await res.json();
                 if(task) {
                     document.getElementById('movieName').innerText = "🎬 Đang xử lý: " + task.movieName;
                     document.getElementById('statusText').innerText = task.status;
                     document.getElementById('progressBar').style.width = task.progress + "%";
-                    
-                    if(task.isCancelled) {
-                        document.getElementById('statusText').style.color = '#dc3545';
-                        document.getElementById('progressBar').style.background = '#dc3545';
-                        document.getElementById('cancelArea').style.display = 'none';
-                        isDone = true;
+                    if(task.isCancelled || task.status.includes('Lỗi')) {
+                        document.getElementById('statusText').style.color = '#dc3545'; document.getElementById('progressBar').style.background = '#dc3545';
+                        document.getElementById('cancelArea').style.display = 'none'; isDone = true;
                     } else if(task.status === 'Hoàn thành 🎉') {
-                        document.getElementById('progressBar').style.background = '#28a745';
-                        document.getElementById('statusText').style.color = '#28a745';
-                        document.getElementById('downloadArea').style.display = 'block';
-                        document.getElementById('cancelArea').style.display = 'none';
-                        document.getElementById('cloudDlBtn').href = '/download-direct/' + task.movieId;
-                        isDone = true;
-                    } else if(task.status.includes('Lỗi')) {
-                        document.getElementById('progressBar').style.background = '#dc3545';
-                        document.getElementById('statusText').style.color = '#dc3545';
-                        document.getElementById('cancelArea').style.display = 'none';
-                        isDone = true;
+                        document.getElementById('progressBar').style.background = '#28a745'; document.getElementById('statusText').style.color = '#28a745';
+                        document.getElementById('downloadArea').style.display = 'block'; document.getElementById('cancelArea').style.display = 'none';
+                        document.getElementById('cloudDlBtn').href = '/download-direct/' + task.movieId; isDone = true;
                     }
                 }
             }
-            setInterval(checkStatus, 1500); 
-            checkStatus();
+            setInterval(checkStatus, 1500); checkStatus();
         </script>
     `, username));
 });
 
-app.get('/api/task-status', (req, res) => {
-    res.json(activeTasks[req.query.taskId] || { status: 'Không tìm thấy tác vụ', progress: 0 });
-});
+app.get('/api/task-status', (req, res) => res.json(activeTasks[req.query.taskId] || { status: 'Không tìm thấy tác vụ', progress: 0 }));
 
 async function runGeminiTranslation(taskId, type, id, movieName, username, apiKey, modelName, rawSubData = null) {
-    const updateTask = (status, progress) => { 
-        if (activeTasks[taskId] && !activeTasks[taskId].isCancelled) { 
-            activeTasks[taskId].status = status; 
-            activeTasks[taskId].progress = progress; 
-        } 
-    };
-
+    const updateTask = (status, progress) => { if (activeTasks[taskId] && !activeTasks[taskId].isCancelled) { activeTasks[taskId].status = status; activeTasks[taskId].progress = progress; } };
     try {
         let subContent = "";
-        
-        if (rawSubData) {
-            updateTask('Đang phân tích file của bạn...', 5);
-            subContent = rawSubData;
-        } else {
+        if (rawSubData) { updateTask('Đang phân tích file...', 5); subContent = rawSubData; } 
+        else {
             updateTask('Đang tải tệp phụ đề gốc...', 5);
-            // GỌI API LẤY SUB VỚI MÃ CHUẨN ĐÃ GHÉP MÙA/TẬP
-            const osUrl = `https://opensubtitles-v3.strem.io/subtitles/${type}/${id}.json`;
-            const osResponse = await axios.get(osUrl, axiosConfig);
-            const allSubs = osResponse.data.subtitles;
-            const engSubs = allSubs ? allSubs.filter(sub => sub.lang === 'eng' || sub.lang === 'en') : [];
-            
-            if (engSubs.length === 0) return updateTask('❌ Lỗi: Phim này chưa có sub Tiếng Anh để dịch.', 0);
-
+            const osResponse = await axios.get(`https://opensubtitles-v3.strem.io/subtitles/${type}/${id}.json`, axiosConfig);
+            const engSubs = (osResponse.data.subtitles || []).filter(sub => sub.lang === 'eng' || sub.lang === 'en');
+            if (engSubs.length === 0) return updateTask('❌ Lỗi: Phim này chưa có sub Tiếng Anh.', 0);
             const subResponse = await axios.get(engSubs[0].url, axiosConfig);
             subContent = subResponse.data;
         }
 
         const blocks = subContent.trim().split(/\n\s*\n/);
-        const parsedBlocks = [];
-        const originalTexts = [];
-
+        const parsedBlocks = [], originalTexts = [];
         blocks.forEach(block => {
-            const lines = block.split('\n');
-            const timestampIdx = lines.findIndex(l => l.includes('-->')); 
-            if (timestampIdx !== -1) {
-                const meta = lines.slice(0, timestampIdx + 1).join('\n');
-                const text = lines.slice(timestampIdx + 1).join(' '); 
-                parsedBlocks.push({ isMeta: false, meta, text });
-                originalTexts.push(text);
-            } else {
-                parsedBlocks.push({ isMeta: true, raw: block });
-            }
+            const lines = block.split('\n'), timestampIdx = lines.findIndex(l => l.includes('-->')); 
+            if (timestampIdx !== -1) { parsedBlocks.push({ isMeta: false, meta: lines.slice(0, timestampIdx + 1).join('\n'), text: lines.slice(timestampIdx + 1).join(' ') }); originalTexts.push(lines.slice(timestampIdx + 1).join(' ')); } 
+            else parsedBlocks.push({ isMeta: true, raw: block });
         });
 
-        const chunkSize = 100; 
-        const translatedTexts = [];
+        const chunkSize = 100, translatedTexts = [];
         updateTask(`Đang yêu cầu ${modelName}...`, 10);
 
         for (let i = 0; i < originalTexts.length; i += chunkSize) {
             if (activeTasks[taskId] && activeTasks[taskId].isCancelled) return; 
-
             const chunk = originalTexts.slice(i, i + chunkSize);
-            let chunkObj = {};
-            chunk.forEach((text, idx) => { chunkObj[idx] = text; });
-            
-            let success = false;
-            let retries = 0;
-            const maxRetries = 3;
+            let chunkObj = {}; chunk.forEach((text, idx) => chunkObj[idx] = text);
+            let success = false, retries = 0;
 
-            while (!success && retries < maxRetries) {
+            while (!success && retries < 3) {
                 if (activeTasks[taskId] && activeTasks[taskId].isCancelled) return;
-
                 try {
-                    const aiResponse = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`, {
-                        contents: [{
-                            parts: [{
-                                text: `Bạn là biên dịch viên phim chuyên nghiệp. Dịch mảng đối tượng JSON sau sang tiếng Việt đời thường.
-TRẢ VỀ ĐÚNG CẤU TRÚC JSON, GIỮ NGUYÊN KHÓA TỪ 0 ĐẾN ${chunk.length - 1}. KHÔNG BỔ SUNG GÌ THÊM.
-Dữ liệu:
-${JSON.stringify(chunkObj)}`
-                            }]
-                        }]
-                    });
-                    
-                    let transRes = aiResponse.data.candidates[0].content.parts[0].text;
-                    transRes = transRes.replace(/```json/g, '').replace(/```/g, '').trim();
+                    const aiResponse = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`, { contents: [{ parts: [{ text: `Dịch mảng JSON sau sang tiếng Việt. TRẢ VỀ ĐÚNG CẤU TRÚC JSON.\nDữ liệu:\n${JSON.stringify(chunkObj)}` }] }] });
+                    let transRes = aiResponse.data.candidates[0].content.parts[0].text.replace(/```json/g, '').replace(/```/g, '').trim();
                     const arrayMatch = transRes.match(/\{[\s\S]*\}/);
                     if (arrayMatch) transRes = arrayMatch[0];
-                    
                     const parsedData = JSON.parse(transRes);
-                    
-                    for (let j = 0; j < chunk.length; j++) {
-                        const splitTrans = (parsedData && parsedData[j]) ? parsedData[j] : chunk[j];
-                        translatedTexts.push(splitTrans);
-                    }
+                    for (let j = 0; j < chunk.length; j++) translatedTexts.push(parsedData && parsedData[j] ? parsedData[j] : chunk[j]);
                     success = true;
-
                 } catch (err) {
                     retries++;
-                    const errMsg = err.response?.data?.error?.message || err.message;
-                    
-                    if (retries >= maxRetries) {
-                        console.error(`Bỏ qua đoạn ${i} do lỗi API liên tục.`);
-                        translatedTexts.push(...chunk);
-                    } else {
-                        let waitTime = 25000; 
-                        const match = errMsg.match(/retry in (\d+(\.\d+)?)s/);
+                    if (retries >= 3) translatedTexts.push(...chunk);
+                    else {
+                        let waitTime = 25000;
+                        const match = (err.response?.data?.error?.message || '').match(/retry in (\d+(\.\d+)?)s/);
                         if (match) waitTime = (parseFloat(match[1]) + 2) * 1000; 
-
-                        const realPercent = Math.floor(10 + (i / originalTexts.length) * 80);
-                        updateTask(`API quá tải. Đang chờ ${Math.ceil(waitTime/1000)}s để thử lại...`, realPercent);
-                        
+                        updateTask(`API quá tải. Đang chờ ${Math.ceil(waitTime/1000)}s...`, Math.floor(10 + (i / originalTexts.length) * 80));
                         await new Promise(r => setTimeout(r, waitTime));
                     }
                 }
             }
-            
-            if (activeTasks[taskId] && activeTasks[taskId].isCancelled) return;
-            const realPercent = Math.floor(10 + (i / originalTexts.length) * 80);
-            updateTask(`Đang xử lý thoại thứ ${Math.min(i + chunkSize, originalTexts.length)}/${originalTexts.length}...`, realPercent);
-            
+            updateTask(`Đang xử lý ${Math.min(i + chunkSize, originalTexts.length)}/${originalTexts.length}...`, Math.floor(10 + (i / originalTexts.length) * 80));
             await new Promise(r => setTimeout(r, 6000)); 
         }
 
         if (activeTasks[taskId] && activeTasks[taskId].isCancelled) return;
-
-        updateTask('Đang lưu trữ lên Firebase Cloud...', 95);
-        let finalVttContent = "";
-        let textIndex = 0;
+        updateTask('Đang lưu trữ...', 95);
+        let finalVttContent = "", textIndex = 0;
         parsedBlocks.forEach(block => {
-            if (block.isMeta) {
-                finalVttContent += block.raw + "\n\n";
-            } else {
-                const viText = translatedTexts[textIndex] || block.text;
-                finalVttContent += block.meta + "\n" + block.text + "\n<font color='#f1c40f'>" + viText + "</font>\n\n";
-                textIndex++;
-            }
+            if (block.isMeta) finalVttContent += block.raw + "\n\n";
+            else { finalVttContent += block.meta + "\n" + block.text + "\n<font color='#f1c40f'>" + (translatedTexts[textIndex] || block.text) + "</font>\n\n"; textIndex++; }
         });
 
-        await setDoc(doc(db, "shared_subs", id), {
-            movieName: movieName,
-            vttContent: finalVttContent,
-            translatedBy: username,
-            createdAt: new Date().toISOString()
-        });
-
+        await setDoc(doc(db, "shared_subs", id), { movieName: movieName, vttContent: finalVttContent, translatedBy: username, createdAt: new Date().toISOString() });
         updateTask('Hoàn thành 🎉', 100);
-
-    } catch (err) {
-        if (activeTasks[taskId] && !activeTasks[taskId].isCancelled) {
-            updateTask(`❌ Lỗi: ${err.message}`, 0);
-        }
-    }
+    } catch (err) { if (activeTasks[taskId] && !activeTasks[taskId].isCancelled) updateTask(`❌ Lỗi: ${err.message}`, 0); }
 }
 
 app.listen(PORT, () => {
     console.log(`=======================================================`);
-    console.log(`🚀 NỀN TẢNG KHO PHỤ ĐỀ AI ĐÃ KHỞI CHẠY (BẢN VÁ LỖI CẤU TRÚC PHIM BỘ)`);
+    console.log(`🚀 NỀN TẢNG KHO PHỤ ĐỀ AI ĐÃ KHỞI CHẠY (BẢN PRO TỐI ƯU KHO)`);
     console.log(`👉 Truy cập ngay tại: http://localhost:7000`);
     console.log(`=======================================================`);
 });
