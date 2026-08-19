@@ -1,7 +1,7 @@
 const express = require('express');
 const axios = require('axios');
 const cookieParser = require('cookie-parser');
-const multer = require('multer'); // Thêm thư viện xử lý upload file
+const multer = require('multer');
 const fs = require('fs');
 // --- IMPORT THƯ VIỆN FIREBASE ---
 const { initializeApp } = require("firebase/app");
@@ -36,7 +36,6 @@ const activeTasks = {};
 
 const getLoggedInUser = (req) => req.cookies.username || null;
 
-// Thẻ nhận diện để không bị OpenSubtitles chặn request
 const axiosConfig = {
     headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' }
 };
@@ -55,6 +54,8 @@ const renderHTML = (content, username = null, isAdmin = false) => `
             body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; background: var(--bg); color: var(--text); transition: 0.3s; }
             .container { max-width: 800px; margin: auto; background: var(--box-bg); padding: 30px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); position: relative; }
             input, select, button { width: 100%; padding: 12px; margin-top: 8px; margin-bottom: 15px; border: 1px solid var(--border); border-radius: 5px; font-size: 16px; box-sizing: border-box; background: var(--input-bg); color: var(--text); }
+            .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
+            .grid-2 input { margin-bottom: 0; }
             button.main-btn { background: #007bff; color: white; border: none; font-weight: bold; cursor: pointer; transition: 0.3s; }
             button.main-btn:hover { background: #0056b3; }
             .btn-dl { background: #28a745; color: white; border: none; font-weight: bold; padding: 10px 15px; cursor: pointer; border-radius: 5px; text-decoration: none; display: inline-block; text-align: center; font-size: 14px; }
@@ -83,7 +84,6 @@ const renderHTML = (content, username = null, isAdmin = false) => `
             .db-item { display: flex; justify-content: space-between; align-items: center; padding: 15px 10px; border-bottom: 1px solid var(--border); }
             .db-item:last-child { border-bottom: none; }
             
-            /* Thêm style cho toggle switch */
             .toggle-switch { display: inline-flex; align-items: center; cursor: pointer; margin-bottom: 15px; }
             .toggle-switch input { display: none; }
             .toggle-slider { width: 40px; height: 20px; background-color: #ccc; border-radius: 20px; position: relative; transition: 0.3s; margin-right: 10px; }
@@ -148,11 +148,20 @@ const renderHTML = (content, username = null, isAdmin = false) => `
                 btn.disabled = false;
             }
 
-            // Xử lý ẩn/hiện ô nhập thủ công
             function toggleManualInput() {
                 const isManual = document.getElementById('manualMode').checked;
                 document.getElementById('autoSearchGroup').style.display = isManual ? 'none' : 'block';
                 document.getElementById('manualSearchGroup').style.display = isManual ? 'block' : 'none';
+            }
+
+            // Hiện khung Mùa/Tập khi chọn Phim Bộ
+            function handleTypeChange(selectElement, targetId) {
+                const group = document.getElementById(targetId);
+                if (selectElement.value === 'series') {
+                    group.style.display = 'grid';
+                } else {
+                    group.style.display = 'none';
+                }
             }
         </script>
     </head>
@@ -175,7 +184,7 @@ const renderHTML = (content, username = null, isAdmin = false) => `
 `;
 
 // ==========================================
-// 3. ROUTE ĐĂNG NHẬP
+// 3. ROUTE ĐĂNG NHẬP (Giữ nguyên)
 // ==========================================
 app.get('/', (req, res) => {
     if (getLoggedInUser(req)) return res.redirect('/dashboard');
@@ -256,10 +265,7 @@ app.get('/dashboard', async (req, res) => {
     const subsSnapshot = await getDocs(collection(db, "shared_subs"));
     let dbHtml = '';
     if (subsSnapshot.empty) {
-        dbHtml = `<div style="text-align: center; padding: 40px 0; opacity: 0.6;">
-            <p style="font-size: 40px; margin: 0;">📭</p>
-            <p>Kho chung hiện đang trống. Hãy là người đầu tiên đóng góp!</p>
-        </div>`;
+        dbHtml = `<div style="text-align: center; padding: 40px 0; opacity: 0.6;"><p style="font-size: 40px; margin: 0;">📭</p><p>Kho chung hiện đang trống.</p></div>`;
     } else {
         dbHtml = `<ul class="db-list">`;
         subsSnapshot.forEach(docSnap => {
@@ -273,7 +279,7 @@ app.get('/dashboard', async (req, res) => {
                     </div>
                     <div style="display: flex; gap: 10px;">
                         <a href="/download-direct/${id}" class="btn-dl">⬇️ Tải Về</a>
-                        ${isAdmin ? `<a href="/delete-sub/${id}" class="btn-del" onclick="return confirm('Bạn muốn xóa vĩnh viễn phim này?')">🗑️ Xóa</a>` : ''}
+                        ${isAdmin ? `<a href="/delete-sub/${id}" class="btn-del" onclick="return confirm('Bạn muốn xóa?')">🗑️ Xóa</a>` : ''}
                     </div>
                 </li>`;
         });
@@ -283,12 +289,12 @@ app.get('/dashboard', async (req, res) => {
     res.send(renderHTML(`
         <div class="tab-nav">
             <button class="tab-btn active" onclick="openTab('tab-search', this)">🔍 Tìm Phim</button>
-            <button class="tab-btn" onclick="openTab('tab-upload', this)">📤 Tải File Lên (Thủ công)</button>
+            <button class="tab-btn" onclick="openTab('tab-upload', this)">📤 Tải File Lên</button>
             <button class="tab-btn" onclick="openTab('tab-storage', this)">☁️ Kho Phụ Đề</button>
             <button class="tab-btn" onclick="openTab('tab-api', this)">⚙️ Cài đặt API</button>
         </div>
 
-        <!-- TAB TÌM KIẾM CÓ CHẾ ĐỘ THỦ CÔNG -->
+        <!-- TAB TÌM KIẾM ĐÃ NÂNG CẤP NHẬP MÙA/TẬP -->
         <div id="tab-search" class="tab-pane active">
             <div class="card" style="border-left: 4px solid #007bff;">
                 <h3 style="margin-top: 0; display: flex; justify-content: space-between; align-items: center;">
@@ -303,36 +309,43 @@ app.get('/dashboard', async (req, res) => {
                 <!-- Tìm kiếm Tự động -->
                 <div id="autoSearchGroup">
                     <form action="/search" method="GET">
-                        <input type="text" name="query" placeholder="Ví dụ: Avatar, The Matrix..." required>
-                        <select name="type">
+                        <input type="text" name="query" placeholder="Tên phim (VD: Adventure Time, Avatar...)" required>
+                        <select name="type" onchange="handleTypeChange(this, 'autoSeasonGroup')">
                             <option value="movie">Phim lẻ (Movie)</option>
                             <option value="series">Phim bộ (Series)</option>
                         </select>
+                        <div id="autoSeasonGroup" class="grid-2" style="display: none;">
+                            <input type="number" name="season" placeholder="Mùa mấy? (VD: 1)" min="1">
+                            <input type="number" name="episode" placeholder="Tập mấy? (VD: 2)" min="1">
+                        </div>
                         <button type="submit" class="main-btn" style="padding: 15px; font-size: 16px;">🔍 Tìm Kiếm Ngay</button>
                     </form>
                 </div>
 
-                <!-- Tìm kiếm bằng IMDb ID (Ẩn mặc định) -->
+                <!-- Tìm kiếm bằng IMDb ID -->
                 <div id="manualSearchGroup" style="display: none; background: #e9ecef; padding: 15px; border-radius: 8px; border-left: 3px solid #6c757d;">
-                    <p style="font-size: 12px; color: #666; margin-top: 0;">*Sử dụng khi Web không tìm đúng tên phim. Lên <a href="https://www.imdb.com" target="_blank">IMDb</a> copy mã ID (vd: tt1234567) dán vào đây.</p>
+                    <p style="font-size: 12px; color: #666; margin-top: 0;">Lấy ID trên IMDb (vd: tt1046141).</p>
                     <form action="/search-manual" method="GET">
-                        <input type="text" name="imdbId" placeholder="Nhập mã IMDb ID (VD: tt0499549)..." required style="background: white;">
-                        <input type="text" name="customName" placeholder="Tên phim hiển thị (VD: Avatar)..." required style="background: white;">
-                        <select name="type" style="background: white;">
+                        <input type="text" name="imdbId" placeholder="Mã IMDb ID gốc..." required style="background: white;">
+                        <input type="text" name="customName" placeholder="Tên phim hiển thị..." required style="background: white;">
+                        <select name="type" onchange="handleTypeChange(this, 'manualSeasonGroup')" style="background: white;">
                             <option value="movie">Phim lẻ (Movie)</option>
                             <option value="series">Phim bộ (Series)</option>
                         </select>
-                        <button type="submit" class="main-btn" style="padding: 15px; font-size: 16px; background: #6c757d;">🔍 Truy Xuất Mã Này</button>
+                        <div id="manualSeasonGroup" class="grid-2" style="display: none;">
+                            <input type="number" name="season" placeholder="Mùa mấy? (VD: 1)" min="1" style="background: white;">
+                            <input type="number" name="episode" placeholder="Tập mấy? (VD: 2)" min="1" style="background: white;">
+                        </div>
+                        <button type="submit" class="main-btn" style="padding: 15px; font-size: 16px; background: #6c757d;">🔍 Truy Xuất ID Này</button>
                     </form>
                 </div>
             </div>
         </div>
 
-        <!-- TAB UPLOAD FILE DỊCH TRỰC TIẾP -->
+        <!-- TAB UPLOAD FILE -->
         <div id="tab-upload" class="tab-pane">
             <div class="card" style="border-left: 4px solid #17a2b8;">
                 <h3 style="margin-top: 0;">📤 DỊCH FILE PHỤ ĐỀ TỪ MÁY TÍNH</h3>
-                <p style="font-size: 13px; color: #666;">Dành cho các phim không có sẵn trên hệ thống. Tải file Tiếng Anh (.srt hoặc .vtt) lên đây để AI dịch sang Tiếng Việt.</p>
                 <form action="/upload-translate" method="POST" enctype="multipart/form-data">
                     <input type="file" name="subFile" accept=".srt,.vtt" required style="padding: 10px; background: #e9ecef;">
                     <input type="text" name="movieName" placeholder="Tên phim (để lưu vào kho chung)..." required>
@@ -353,17 +366,14 @@ app.get('/dashboard', async (req, res) => {
         <div id="tab-api" class="tab-pane">
             <div class="card" style="border-left: 4px solid #f1c40f;">
                 <h3 style="margin-top: 0;">🔑 CẤU HÌNH GOOGLE GEMINI API</h3>
-                
                 <label style="font-weight: bold; font-size: 14px;">1. Chọn Phiên Bản Model AI:</label>
                 <select id="geminiModel" style="margin-top: 8px; margin-bottom: 20px; padding: 12px; background: var(--bg);">
-                    <option value="gemini-2.5-flash" ${currentModel === 'gemini-2.5-flash' ? 'selected' : ''}>Gemini 2.5 Flash (Khuyên dùng - Free & Nhanh)</option>
-                    <option value="gemini-1.5-flash" ${currentModel === 'gemini-1.5-flash' ? 'selected' : ''}>Gemini 1.5 Flash (Bản cũ)</option>
-                    <option value="gemini-1.5-pro" ${currentModel === 'gemini-1.5-pro' ? 'selected' : ''}>Gemini 1.5 Pro (Nâng cao)</option>
+                    <option value="gemini-2.5-flash" ${currentModel === 'gemini-2.5-flash' ? 'selected' : ''}>Gemini 2.5 Flash</option>
+                    <option value="gemini-1.5-flash" ${currentModel === 'gemini-1.5-flash' ? 'selected' : ''}>Gemini 1.5 Flash</option>
                 </select>
-
                 <label style="font-weight: bold; font-size: 14px;">2. Dán API Key Của Bạn:</label>
                 <div style="display: flex; gap: 10px; margin-top: 8px; margin-bottom: 10px;">
-                    <input type="text" id="geminiKey" value="${userData.geminiKey || ''}" placeholder="Nhập mã API (Bắt đầu bằng AIza...)" style="margin: 0; flex: 1;">
+                    <input type="text" id="geminiKey" value="${userData.geminiKey || ''}" placeholder="Nhập mã API..." style="margin: 0; flex: 1;">
                     <button id="btnTestKey" onclick="testAndSaveKey()" class="main-btn" style="width: 180px; margin: 0;">🔌 Kiểm Tra & Lưu</button>
                 </div>
                 <div id="keyStatus"></div>
@@ -384,77 +394,79 @@ app.get('/delete-sub/:id', async (req, res) => {
 });
 
 // ==========================================
-// 5. TÌM KIẾM CƠ BẢN
+// 5. TÌM KIẾM ĐÃ CẤU TRÚC LẠI CHO PHIM BỘ
 // ==========================================
 app.get('/search', async (req, res) => {
     const username = getLoggedInUser(req);
     if (!username) return res.redirect('/');
     
-    const { query, type } = req.query;
+    const { query, type, season, episode } = req.query;
     try {
         const response = await axios.get(`https://v3-cinemeta.strem.io/catalog/${type}/top/search=${encodeURIComponent(query)}.json`, axiosConfig);
         const metas = response.data.metas;
 
-        if (!metas || metas.length === 0) return res.send(renderHTML(`<h3>❌ Không tìm thấy phim</h3><br><a href="/dashboard">⬅ Trở về Trang chủ</a>`, username));
+        if (!metas || metas.length === 0) return res.send(renderHTML(`<h3>❌ Không tìm thấy phim</h3><br><a href="/dashboard">⬅ Trở về</a>`, username));
 
         let resultsHTML = `<h3>Kết quả tìm kiếm cho "${query}":</h3>`;
         
         for (const meta of metas) {
-            resultsHTML += await processMovieResult(meta.imdb_id, meta.name, meta.releaseInfo || meta.year, meta.poster, type);
+            resultsHTML += await processMovieResult(meta.imdb_id, meta.name, meta.releaseInfo || meta.year, meta.poster, type, season, episode);
         }
         res.send(renderHTML(resultsHTML + `<br><a href="/dashboard" class="main-btn" style="text-decoration:none; display:inline-block; padding:10px 20px;">⬅ Trở Về</a>`, username));
     } catch (error) { res.send(renderHTML(`<h3>Lỗi kết nối dữ liệu: ${error.message}</h3><br><a href="/dashboard">⬅ Trở về</a>`, username)); }
 });
 
-// ==========================================
-// 5.1 TÌM KIẾM BẰNG ID THỦ CÔNG
-// ==========================================
 app.get('/search-manual', async (req, res) => {
     const username = getLoggedInUser(req);
     if (!username) return res.redirect('/');
     
-    const { imdbId, customName, type } = req.query;
+    const { imdbId, customName, type, season, episode } = req.query;
     try {
         let resultsHTML = `<h3>Kết quả truy xuất ID "${imdbId}":</h3>`;
-        // Truyền poster giả do không có API lấy ảnh
-        resultsHTML += await processMovieResult(imdbId, customName, 'N/A', 'https://via.placeholder.com/60x90?text=Manual', type);
+        resultsHTML += await processMovieResult(imdbId, customName, 'N/A', 'https://via.placeholder.com/60x90?text=Manual', type, season, episode);
         
         res.send(renderHTML(resultsHTML + `<br><a href="/dashboard" class="main-btn" style="text-decoration:none; display:inline-block; padding:10px 20px;">⬅ Trở Về</a>`, username));
     } catch (error) { res.send(renderHTML(`<h3>Lỗi kết nối dữ liệu: ${error.message}</h3><br><a href="/dashboard">⬅ Trở về</a>`, username)); }
 });
 
-// Hàm xử lý chung cho kết quả tìm kiếm để tránh lặp code
-async function processMovieResult(movieId, name, year, poster, type) {
+// HÀM XỬ LÝ GHÉP MÃ S/E (QUAN TRỌNG NHẤT)
+async function processMovieResult(movieId, name, year, poster, type, season, episode) {
     const displayYear = year || ''; 
     const yearStr = displayYear ? `(${displayYear})` : '';
     let html = '';
 
-    const subSnap = await getDoc(doc(db, "shared_subs", movieId));
+    // Nếu là phim bộ và có nhập mùa/tập, tạo mã fullId chuẩn của Stremio API
+    let fullId = movieId;
+    let displayName = `${name} ${yearStr}`;
+    
+    if (type === 'series' && season && episode) {
+        fullId = `${movieId}:${season}:${episode}`;
+        displayName = `${name} (Mùa ${season} Tập ${episode})`;
+    }
+
+    const subSnap = await getDoc(doc(db, "shared_subs", fullId));
     
     if (subSnap.exists()) {
         html += `
             <div class="result-item">
                 <img src="${poster || ''}">
                 <div class="result-info">
-                    <h4>${name} ${yearStr}</h4>
+                    <h4>${displayName}</h4>
                     <p style="color: #28a745; font-weight: bold;">⚡ Đã dịch sẵn trong Kho Đám Mây!</p>
                 </div>
-                <a href="/download-direct/${movieId}" class="btn-dl">⬇️ Tải Ngay (0.1s)</a>
+                <a href="/download-direct/${fullId}" class="btn-dl">⬇️ Tải Ngay (0.1s)</a>
             </div>`;
     } else {
         let hasOpenSubViet = false;
         let openSubVietUrl = "";
         try {
-            const osUrl = `https://opensubtitles-v3.strem.io/subtitles/${type}/${movieId}.json`;
+            // ĐÂY CHÍNH LÀ CHỖ API TÌM THEO ID (với Phim bộ thì nó là ttXXXXXX:1:2)
+            const osUrl = `https://opensubtitles-v3.strem.io/subtitles/${type}/${fullId}.json`;
             const osResponse = await axios.get(osUrl, axiosConfig);
             const allSubs = osResponse.data.subtitles || [];
             
             const vieSubs = allSubs.filter(sub => 
-                sub.lang && (
-                    sub.lang.toLowerCase().includes('vi') || 
-                    sub.lang.toLowerCase() === 'vie' || 
-                    sub.lang.toLowerCase().includes('viet')
-                )
+                sub.lang && (sub.lang.toLowerCase().includes('vi') || sub.lang.toLowerCase() === 'vie')
             );
             
             if (vieSubs.length > 0) { 
@@ -462,7 +474,7 @@ async function processMovieResult(movieId, name, year, poster, type) {
                 openSubVietUrl = vieSubs[0].url; 
             }
         } catch (e) {
-            console.log(`Lỗi quét nguồn cho ${movieId}:`, e.message);
+            console.log(`Lỗi quét nguồn cho ${fullId}:`, e.message);
         }
 
         if (hasOpenSubViet) {
@@ -470,20 +482,20 @@ async function processMovieResult(movieId, name, year, poster, type) {
                 <div class="result-item">
                     <img src="${poster || ''}">
                     <div class="result-info">
-                        <h4>${name} ${yearStr}</h4>
-                        <p style="color: #16a085; font-weight: bold;">✨ Nguồn mở đã có sẵn Sub Việt gốc!</p>
+                        <h4>${displayName}</h4>
+                        <p style="color: #16a085; font-weight: bold;">✨ Đã có Sub Việt gốc!</p>
                     </div>
-                    <a href="/download-external?url=${encodeURIComponent(openSubVietUrl)}&name=${encodeURIComponent(name)}" class="btn-dl" style="background: #16a085;">⬇️ Tải Sub Gốc</a>
+                    <a href="/download-external?url=${encodeURIComponent(openSubVietUrl)}&name=${encodeURIComponent(displayName)}" class="btn-dl" style="background: #16a085;">⬇️ Tải Sub Gốc</a>
                 </div>`;
         } else {
             html += `
                 <div class="result-item">
                     <img src="${poster || ''}">
                     <div class="result-info">
-                        <h4>${name} ${yearStr}</h4>
+                        <h4>${displayName}</h4>
                         <p style="color: #e67e22;">☁️ Chưa có sub Việt. Cần dùng AI dịch mới.</p>
                     </div>
-                    <a href="/trigger-translate?type=${type}&id=${movieId}&name=${encodeURIComponent(name)}" class="btn-dl" style="background: #007bff;">🚀 Dịch Bằng AI</a>
+                    <a href="/trigger-translate?type=${type}&id=${fullId}&name=${encodeURIComponent(displayName)}" class="btn-dl" style="background: #007bff;">🚀 Dịch Bằng AI</a>
                 </div>`;
         }
     }
@@ -513,7 +525,6 @@ app.get('/download-external', async (req, res) => {
     } catch (err) { res.send("Lỗi tải tệp: " + err.message); }
 });
 
-
 // ==========================================
 // 5.2 XỬ LÝ UPLOAD FILE DỊCH
 // ==========================================
@@ -526,11 +537,8 @@ app.post('/upload-translate', upload.single('subFile'), async (req, res) => {
 
     if (!file) return res.send(renderHTML(`<h3>❌ Vui lòng chọn file!</h3><br><a href="/dashboard">⬅ Trở về</a>`, username));
 
-    // Đọc nội dung file upload
     fs.readFile(file.path, 'utf8', async (err, data) => {
         if (err) return res.send("Lỗi đọc file: " + err.message);
-        
-        // Xóa file tạm
         fs.unlinkSync(file.path);
 
         const userSnap = await getDoc(doc(db, "users", username));
@@ -542,13 +550,11 @@ app.post('/upload-translate', upload.single('subFile'), async (req, res) => {
             return res.send(renderHTML(`<h3 style="color: red;">❌ Bạn chưa cấu hình API Key!</h3><a href="/dashboard">Quay lại</a>`, username));
         }
 
-        // Tạo ID giả cho file tải lên thủ công
         const customId = `upload-${Date.now()}`;
         const taskId = `${customId}-task`;
         
         activeTasks[taskId] = { status: 'Đang nạp file tải lên...', progress: 0, movieName: movieName, movieId: customId, isCancelled: false };
 
-        // Chạy hàm dịch truyền trực tiếp dữ liệu file (isManualUpload = true)
         runGeminiTranslation(taskId, 'manual', customId, movieName, username, geminiKey, geminiModel, data);
         res.redirect(`/status-page?taskId=${taskId}`);
     });
@@ -558,8 +564,6 @@ app.post('/upload-translate', upload.single('subFile'), async (req, res) => {
 // ==========================================
 // 6. TIẾN ĐỘ NỀN & GEMINI API CALL 
 // ==========================================
-
-// API Hủy tác vụ
 app.get('/api/cancel-task', (req, res) => {
     const { taskId } = req.query;
     if (activeTasks[taskId]) {
@@ -582,7 +586,6 @@ app.get('/trigger-translate', async (req, res) => {
         return res.send(renderHTML(`
             <div style="text-align:center;">
                 <h3 style="color: red;">❌ Bạn chưa cấu hình API Key!</h3>
-                <p>Vui lòng vào tab <b>Cài đặt API</b> để dán Key của bạn trước khi dịch.</p>
                 <a href="/dashboard" class="btn-dl" style="background:#007bff;">Quay lại Bảng điều khiển</a>
             </div>
         `, username));
@@ -669,7 +672,6 @@ app.get('/api/task-status', (req, res) => {
     res.json(activeTasks[req.query.taskId] || { status: 'Không tìm thấy tác vụ', progress: 0 });
 });
 
-// Thêm tham số rawSubData để nhận dữ liệu từ file tải lên
 async function runGeminiTranslation(taskId, type, id, movieName, username, apiKey, modelName, rawSubData = null) {
     const updateTask = (status, progress) => { 
         if (activeTasks[taskId] && !activeTasks[taskId].isCancelled) { 
@@ -682,12 +684,11 @@ async function runGeminiTranslation(taskId, type, id, movieName, username, apiKe
         let subContent = "";
         
         if (rawSubData) {
-            // Dịch file tải lên thủ công
             updateTask('Đang phân tích file của bạn...', 5);
             subContent = rawSubData;
         } else {
-            // Dịch tự động qua API
             updateTask('Đang tải tệp phụ đề gốc...', 5);
+            // GỌI API LẤY SUB VỚI MÃ CHUẨN ĐÃ GHÉP MÙA/TẬP
             const osUrl = `https://opensubtitles-v3.strem.io/subtitles/${type}/${id}.json`;
             const osResponse = await axios.get(osUrl, axiosConfig);
             const allSubs = osResponse.data.subtitles;
@@ -819,7 +820,7 @@ ${JSON.stringify(chunkObj)}`
 
 app.listen(PORT, () => {
     console.log(`=======================================================`);
-    console.log(`🚀 NỀN TẢNG KHO PHỤ ĐỀ AI ĐÃ KHỞI CHẠY (BẢN VÁ LỖI TÙY CHỈNH)`);
+    console.log(`🚀 NỀN TẢNG KHO PHỤ ĐỀ AI ĐÃ KHỞI CHẠY (BẢN VÁ LỖI CẤU TRÚC PHIM BỘ)`);
     console.log(`👉 Truy cập ngay tại: http://localhost:7000`);
     console.log(`=======================================================`);
 });
